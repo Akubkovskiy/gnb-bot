@@ -1,0 +1,41 @@
+import { Bot } from "grammy";
+import { config } from "./config.js";
+import { logger } from "./logger.js";
+import { authMiddleware } from "./telegram/middleware.js";
+import { registerHandlers } from "./telegram/handlers.js";
+import { initMemory } from "./memory/init.js";
+
+async function main() {
+  logger.info("=== GNB Docs Bot запускается ===");
+
+  if (!config.botToken) {
+    logger.error("TELEGRAM_BOT_TOKEN не задан в .env!");
+    process.exit(1);
+  }
+
+  // Инициализация базы знаний
+  initMemory();
+
+  // Создание бота
+  const bot = new Bot(config.botToken);
+
+  // Auth middleware — первым
+  bot.use(authMiddleware);
+
+  // Регистрация обработчиков
+  registerHandlers(bot);
+
+  // Обработка ошибок
+  bot.catch((err) => {
+    logger.error({ err: err.error, ctx: err.ctx?.update?.update_id }, "Ошибка бота");
+  });
+
+  // Запуск
+  logger.info({ allowedUsers: config.allowedUserIds }, "Бот запущен, жду сообщения...");
+  await bot.start({ drop_pending_updates: true });
+}
+
+main().catch((err) => {
+  logger.error({ err }, "Фатальная ошибка");
+  process.exit(1);
+});
