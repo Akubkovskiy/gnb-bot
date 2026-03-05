@@ -49,18 +49,18 @@ interface AskClaudeOptions {
   timeoutMs?: number;
 }
 
-// Интерфейс для stream-json событий от Claude CLI
-interface ClaudeStreamEvent {
+// Ответ Claude CLI в формате json
+interface ClaudeJsonResult {
   type: string;
   subtype?: string;
-  content_block?: { type: string; text?: string };
-  delta?: { type: string; text?: string };
-  result?: { text?: string };
+  result?: string;
+  cost_usd?: number;
+  duration_ms?: number;
 }
 
 /**
  * Отправляет промпт в Claude CLI и возвращает текстовый ответ.
- * Использует --output-format stream-json для получения ответа.
+ * Использует --output-format json (одиночный результат).
  */
 export async function askClaude(prompt: string, options: AskClaudeOptions = {}): Promise<string> {
   const { systemPrompt, files, timeoutMs = 120_000 } = options;
@@ -68,11 +68,11 @@ export async function askClaude(prompt: string, options: AskClaudeOptions = {}):
 
   const args = [
     "-p", prompt,
-    "--output-format", "stream-json",
+    "--output-format", "json",
   ];
 
   if (systemPrompt) {
-    args.push("--system-prompt", systemPrompt);
+    args.push("--append-system-prompt", systemPrompt);
   }
 
   if (config.claudeModel) {
@@ -101,27 +101,11 @@ export async function askClaude(prompt: string, options: AskClaudeOptions = {}):
       timeout: timeoutMs,
     });
 
-    let output = "";
+    let stdout = "";
     let stderr = "";
 
     proc.stdout.on("data", (chunk: Buffer) => {
-      const lines = chunk.toString("utf-8").split("\n").filter(Boolean);
-      for (const line of lines) {
-        try {
-          const event = JSON.parse(line) as ClaudeStreamEvent;
-
-          // Собираем текст из assistant message
-          if (event.type === "content_block_delta" && event.delta?.text) {
-            output += event.delta.text;
-          }
-          // Финальный результат
-          if (event.type === "result" && event.result?.text) {
-            output = event.result.text;
-          }
-        } catch {
-          // Не JSON строка — пропускаем
-        }
-      }
+      stdout += chunk.toString("utf-8");
     });
 
     proc.stderr.on("data", (chunk: Buffer) => {
@@ -129,14 +113,24 @@ export async function askClaude(prompt: string, options: AskClaudeOptions = {}):
     });
 
     proc.on("close", (code) => {
-      if (code === 0 && output) {
-        resolve(output.trim());
-      } else if (output) {
-        // Иногда код != 0, но ответ есть
-        resolve(output.trim());
-      } else {
+      if (stdout.trim()) {
+        try {
+          const json = JSON.parse(stdout) as ClaudeJsonResult;
+          if (json.result) {
+            resolve(json.result.trim());
+            return;
+          }
+        } catch {
+          // Не JSON — вернём как текст
+          resolve(stdout.trim());
+          return;
+        }
+      }
+      if (code !== 0) {
         logger.error({ code, stderr }, "Claude CLI ошибка");
         reject(new Error(`Claude CLI завершился с кодом ${code}: ${stderr.slice(0, 500)}`));
+      } else {
+        resolve(stdout.trim() || "(пустой ответ)");
       }
     });
 
@@ -153,14 +147,59 @@ export async function askClaude(prompt: string, options: AskClaudeOptions = {}):
   });
 }
 
-/**
- * OCR изображения через Claude CLI.
- * Передаёт путь к файлу в промпте + добавляет директорию через --add-dir.
- */
-export async function ocrImage(filePath: string, customPrompt?: string): Promise<string> {
-  const absPath = path.resolve(filePath);
-  const prompt = customPrompt
-    || `Прочитай файл ${absPath} и распознай весь текст на изображении. Покажи распознанный текст. Неуверенные места пометь символом (?).`;
+// Промпты для разных типов документов
+const DOC_PROMPTS = {
+  // Общий OCR
+  generic: (filePath: string) =>
+    `Прочитай файл ${filePath} и распознай текст. Покажи распознанный текст. Неуверенные места пометь (?).`,
 
+  // Определение типа документа + извлечение данных
+  detect: (filePath: string) =>
+    `Прочитай файл ${filePath}. Определи тип документа и извлеки ТОЛЬКО ключевые данные.
+
+Типы документов и что извлекать:
+
+1. ПАСПОРТ КАЧЕСТВА / ПАСПОРТ ТРУБЫ:
+   Извлеки ТОЛЬКО: номер паспорта, дата паспорта, условное обозначение трубы (марка).
+   Формат ответа:
+   ТИП: паспорт качества
+   Номер: [номер]
+   Дата: [дата]
+   Труба: [условное обозначение]
+
+2. СЕРТИФИКАТ СООТВЕТСТВИЯ:
+   Извлеки: номер сертификата, срок действия, на что выдан.
+   Формат: ТИП: сертификат / Номер / Срок / Продукция
+
+3. ПРИКАЗ О НАЗНАЧЕНИИ:
+   Извлеки: ФИО, должность, номер приказа, дата, кем выдан.
+   Формат: ТИП: приказ / ФИО / Должность / Номер / Дата / Организация
+
+4. ИСПОЛНИТЕЛЬНАЯ СХЕМА (чертёж со штампом):
+   Извлеки: номер ГНБ, шифр проекта, L план, L профиль, диаметр, адрес.
+   Формат: ТИП: схема / Номер ГНБ / Шифр / L_план / L_профиль / Диаметр / Адрес
+
+5. АКТ ОСМОТРА (рукописный):
+   Извлеки: подписанты (ФИО, должности), даты работ.
+   Формат: ТИП: акт осмотра / Подписанты / Даты
+
+Если не можешь определить тип — напиши ТИП: неизвестен и покажи краткое содержание.
+Неуверенные места пометь (?).`,
+} as const;
+
+/**
+ * OCR документа через Claude CLI с автоопределением типа.
+ */
+export async function ocrDocument(filePath: string, customPrompt?: string): Promise<string> {
+  const absPath = path.resolve(filePath);
+  const prompt = customPrompt || DOC_PROMPTS.detect(absPath);
   return askClaude(prompt, { files: [absPath] });
+}
+
+/**
+ * Простой OCR — распознать весь текст.
+ */
+export async function ocrRawText(filePath: string): Promise<string> {
+  const absPath = path.resolve(filePath);
+  return askClaude(DOC_PROMPTS.generic(absPath), { files: [absPath] });
 }

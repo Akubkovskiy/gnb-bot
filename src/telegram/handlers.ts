@@ -1,15 +1,22 @@
 import { Bot, Context, InputFile } from "grammy";
 import fs from "node:fs";
 import path from "node:path";
-import { askClaude, ocrImage } from "../claude.js";
-import { readSheet1, formatKeyCells } from "../documents/excel.js";
+import { askClaude, ocrDocument } from "../claude.js";
+import { readSheet1 } from "../documents/excel.js";
 import { getTempDir } from "../utils/paths.js";
+import { buildMemoryContext } from "../memory/reader.js";
 import { logger } from "../logger.js";
 
 const CLAUDE_SYSTEM = fs.readFileSync(
   path.join(process.cwd(), "CLAUDE.md"),
   "utf-8",
 );
+
+// Собирает system prompt + актуальный контекст из .gnb-memory
+function getSystemPromptWithMemory(): string {
+  const memory = buildMemoryContext();
+  return `${CLAUDE_SYSTEM}\n\n${memory}`;
+}
 
 // Разбить длинное сообщение на части по 4096 символов
 function splitMessage(text: string, maxLen = 4096): string[] {
@@ -103,16 +110,16 @@ export function registerHandlers(bot: Bot): void {
       const buffer = Buffer.from(await response.arrayBuffer());
       fs.writeFileSync(localPath, buffer);
 
-      await ctx.api.editMessageText(ctx.chat.id, status.message_id, "🔍 Распознаю текст через Claude...");
+      await ctx.api.editMessageText(ctx.chat.id, status.message_id, "🔍 Анализирую документ...");
 
-      // OCR через Claude CLI
-      const text = await ocrImage(localPath);
+      // OCR с автоопределением типа документа
+      const text = await ocrDocument(localPath);
 
       // Удаляем temp файл
       fs.unlinkSync(localPath);
 
       // Отправляем результат
-      const parts = splitMessage(`📝 Распознанный текст:\n\n${text}`);
+      const parts = splitMessage(`📋 Результат:\n\n${text}`);
       await ctx.api.editMessageText(ctx.chat.id, status.message_id, parts[0]);
       for (let i = 1; i < parts.length; i++) {
         await ctx.reply(parts[i]);
@@ -155,13 +162,31 @@ export function registerHandlers(bot: Bot): void {
 
         await ctx.api.editMessageText(ctx.chat.id, status.message_id, "📊 Читаю Excel...");
 
-        const { keyCells } = readSheet1(localPath);
-        const formatted = formatKeyCells(keyCells);
+        const { sheetName, text } = readSheet1(localPath);
 
         // Удаляем temp файл
         fs.unlinkSync(localPath);
 
-        const result = `📊 Данные из ${fileName} (Лист1):\n\n${formatted}`;
+        // Отправляем данные Claude для умного извлечения
+        const prompt =
+          `Ниже — данные из Excel-файла "${fileName}", лист "${sheetName}".\n` +
+          `Каждая строка в формате "R<номер>: ячейка1 | ячейка2 | ..."\n\n` +
+          `${text}\n\n` +
+          `Извлеки и покажи ключевые данные из этого акта ГНБ:\n` +
+          `- Наименование объекта\n` +
+          `- Адрес\n` +
+          `- Заказчик, Генподрядчик, Субподрядчик\n` +
+          `- Номер перехода ГНБ\n` +
+          `- Номер/шифр проекта\n` +
+          `- Дата начала и окончания работ\n` +
+          `- Марка трубы, диаметр, длина\n` +
+          `- Исполнитель\n` +
+          `- Другие важные данные, если есть\n\n` +
+          `Формат: каждое поле на новой строке "Поле: значение". Только факты, без пояснений.`;
+
+        const response = await askClaude(prompt, { systemPrompt: getSystemPromptWithMemory() });
+
+        const result = `📊 Данные из ${fileName} (${sheetName}):\n\n${response}`;
         const parts = splitMessage(result);
         await ctx.api.editMessageText(ctx.chat.id, status.message_id, parts[0]);
         for (let i = 1; i < parts.length; i++) {
@@ -174,9 +199,47 @@ export function registerHandlers(bot: Bot): void {
           `❌ Ошибка чтения Excel: ${err instanceof Error ? err.message : "неизвестная ошибка"}`,
         );
       }
+    } else if (ext === ".pdf") {
+      // PDF → OCR через Claude CLI
+      const status = await ctx.reply(`⏳ Скачиваю ${fileName}...`);
+
+      try {
+        const file = await ctx.api.getFile(doc.file_id);
+        if (!file.file_path) {
+          await ctx.api.editMessageText(ctx.chat.id, status.message_id, "❌ Не удалось получить файл");
+          return;
+        }
+
+        const tempDir = getTempDir();
+        fs.mkdirSync(tempDir, { recursive: true });
+        const localPath = path.join(tempDir, fileName);
+
+        const fileUrl = `https://api.telegram.org/file/bot${bot.token}/${file.file_path}`;
+        const response = await fetch(fileUrl);
+        const buffer = Buffer.from(await response.arrayBuffer());
+        fs.writeFileSync(localPath, buffer);
+
+        await ctx.api.editMessageText(ctx.chat.id, status.message_id, "🔍 Анализирую PDF...");
+
+        const text = await ocrDocument(localPath
+        );
+
+        fs.unlinkSync(localPath);
+
+        const parts = splitMessage(`📄 Данные из ${fileName}:\n\n${text}`);
+        await ctx.api.editMessageText(ctx.chat.id, status.message_id, parts[0]);
+        for (let i = 1; i < parts.length; i++) {
+          await ctx.reply(parts[i]);
+        }
+      } catch (err) {
+        logger.error({ err }, "Ошибка обработки PDF");
+        await ctx.api.editMessageText(
+          ctx.chat.id, status.message_id,
+          `❌ Ошибка обработки PDF: ${err instanceof Error ? err.message : "неизвестная ошибка"}`,
+        );
+      }
     } else {
-      // Другие файлы — пока просто сообщаем
-      await ctx.reply(`📎 Получен файл: ${fileName}\nПока поддерживаются только .xls файлы.`);
+      await ctx.reply(`📎 Получен файл: ${fileName}\nПоддерживаются: .xls, .xlsx, .pdf`);
     }
   });
 
@@ -189,7 +252,7 @@ export function registerHandlers(bot: Bot): void {
     const status = await ctx.reply("⏳ Думаю...");
 
     try {
-      const response = await askClaude(text, { systemPrompt: CLAUDE_SYSTEM });
+      const response = await askClaude(text, { systemPrompt: getSystemPromptWithMemory() });
 
       const parts = splitMessage(response);
       await ctx.api.editMessageText(ctx.chat.id, status.message_id, parts[0]);
