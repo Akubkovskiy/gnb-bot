@@ -7,12 +7,13 @@ import { logger } from "./logger.js";
 function findClaudePath(): string {
   if (config.claudeCliPath) return config.claudeCliPath;
 
-  // Пробуем найти через where (Windows)
+  // Пробуем найти через which/where
+  const whichCmd = process.platform === "win32" ? "where claude" : "which claude";
   try {
-    const result = execSync("where claude", { encoding: "utf-8", timeout: 5000 }).trim();
+    const result = execSync(whichCmd, { encoding: "utf-8", timeout: 5000 }).trim();
     if (result) {
       const firstLine = result.split("\n")[0].trim();
-      logger.info({ path: firstLine }, "Claude CLI найден через where");
+      logger.info({ path: firstLine }, "Claude CLI найден через which/where");
       return firstLine;
     }
   } catch { /* не найден */ }
@@ -20,6 +21,11 @@ function findClaudePath(): string {
   // Известные пути
   const home = process.env.USERPROFILE || process.env.HOME || "";
   const knownPaths = [
+    // Linux
+    "/usr/bin/claude",
+    "/usr/local/bin/claude",
+    path.join(home, ".local", "bin", "claude"),
+    // Windows
     path.join(home, ".local", "bin", "claude.exe"),
     path.join(home, "AppData", "Local", "Programs", "claude", "claude.exe"),
     path.join(home, ".claude", "bin", "claude.exe"),
