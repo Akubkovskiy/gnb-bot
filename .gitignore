@@ -3,3 +3,4 @@ dist/
 .env
 temp_files/
 *.log
+.~lock.*

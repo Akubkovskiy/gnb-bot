@@ -1,0 +1,56 @@
+{
+  "_meta": {
+    "source": "2 Акты ЗП ГНБ 3-3 v2.xlsx",
+    "extracted": "2026-03-15T10:26:34.529Z",
+    "format": "mixed layout (B column contains full description, NOT v3 layout)",
+    "notes": [
+      "B3 format differs: 'ЗП № 3-3 г. Москва, ...' (number+address) vs 5-5 full project name",
+      "B14 = 'АО «ОЭК»' without department prefix",
+      "sign2=СПЕЦИНЖСТРОЙ(субподряд), sign3=Стройтрест(подряд) — ROLES SWAPPED vs 5-5",
+      "B23=same as B20 (no separate tech supervisor)"
+    ]
+  },
+  "title_line": "ЗП № 3-3 г. Москва, Огородный проезд, 19",
+  "object_name": "«Выполнение работ по прокладке КЛ методом горизонтального направленного бурения по объекту: «Резервирование электроснабжения РП 70046».",
+  "address": "г. Москва, Огородный проезд, 19",
+  "gnb_number": "ЗП № 3-3",
+  "gnb_number_short": "3-3",
+  "project_number": "04-ОЭКСТ-КС-25-ТКР.1",
+  "start_date": {
+    "day": 6,
+    "month": "октября",
+    "year": 2025
+  },
+  "end_date": {
+    "day": 21,
+    "month": "октября",
+    "year": 2025
+  },
+  "executor": "ООО «СПЕЦИНЖСТРОЙ» ",
+  "completion_date": "«21» октября 2025 г.",
+  "customer_display": "АО «ОЭК»",
+  "contractor_display": "ООО «СПЕЦИНЖСТРОЙ» ",
+  "designer_display": "ООО «СПЕЦИНЖСТРОЙ»",
+  "sign1_desc": "Представитель   АО «ОЭК» Мастер по ЭРС СВРЭС Акимов Ю.О.",
+  "sign1_line": "Представитель   АО «ОЭК» ____________________Акимов Ю.О.",
+  "sign2_desc": "Представитель субподрядной организации ООО «СПЕЦИНЖСТРОЙ»  Начальник участка Щеглов Р.А.",
+  "sign2_line": "Начальник участка ООО «СПЕЦИНЖСТРОЙ»  ______________________Щеглов Р.А.",
+  "sign3_desc": "Представитель подрядной организации АНО \"ОЭК Стройтрест\" Начальник участка Буряк А.М.",
+  "sign3_line": "Начальник участка АНО \"ОЭК Стройтрест\" ______________________Буряк А.М.",
+  "tech_desc": "Представитель   АО «ОЭК» Мастер по ЭРС СВРЭС Акимов Ю.О.",
+  "tech_line": " ",
+  "pipe_mark": "Труба ЭЛЕКТРОПАЙП 225/170-N 1250 F2 SDR 13,6",
+  "pipe_diameter": "d=225",
+  "gnb_table": "ЗП № 3-3",
+  "plan_length": null,
+  "profile_length": 128.2,
+  "pipe_count": 2,
+  "e31_formula": {
+    "formula": "C31*D31"
+  },
+  "drill_diameter": null,
+  "configuration": "2тр. D=225мм.",
+  "h31_formula": {
+    "formula": "E31/13"
+  }
+}

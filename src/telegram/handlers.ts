@@ -3,9 +3,19 @@ import fs from "node:fs";
 import path from "node:path";
 import { askClaude, ocrDocument } from "../claude.js";
 import { readSheet1 } from "../documents/excel.js";
-import { getTempDir } from "../utils/paths.js";
+import { getTempDir, getMemoryDir } from "../utils/paths.js";
 import { buildMemoryContext } from "../memory/reader.js";
 import { logger } from "../logger.js";
+import { startFlow, handleInput as flowHandleInput, getActiveDraft } from "../flow/new-flow.js";
+import type { FlowStores, FlowResponse } from "../flow/flow-types.js";
+import type { Transition } from "../domain/types.js";
+import { DraftStore } from "../store/drafts.js";
+import { TransitionStore } from "../store/transitions.js";
+import { CustomerStore } from "../store/customers.js";
+import { PeopleStore } from "../store/people.js";
+import { renderInternalActs } from "../renderer/internal-acts.js";
+import { renderAosr } from "../renderer/aosr.js";
+import { getProjectDir } from "../utils/paths.js";
 
 const CLAUDE_SYSTEM = fs.readFileSync(
   path.join(process.cwd(), "CLAUDE.md"),
@@ -33,19 +43,104 @@ function splitMessage(text: string, maxLen = 4096): string[] {
   return parts;
 }
 
+/** Initialize stores once per bot lifetime. */
+function initStores(): FlowStores {
+  const memDir = getMemoryDir();
+  return {
+    drafts: new DraftStore(memDir),
+    transitions: new TransitionStore(memDir),
+    customers: new CustomerStore(memDir),
+    people: new PeopleStore(memDir),
+  };
+}
+
+/**
+ * Render XLSX files from a finalized transition and send via Telegram.
+ * Does not throw — logs errors and sends error message to user.
+ */
+async function renderAndSend(
+  ctx: Context,
+  transition: Transition,
+): Promise<void> {
+  const outputDir = path.join(
+    getProjectDir(transition.customer, transition.object),
+    `ЗП ${transition.gnb_number_short}`,
+    "Исполнительная документация",
+  );
+
+  const status = await ctx.reply("📝 Генерирую акты...");
+  const files: string[] = [];
+  const errors: string[] = [];
+
+  // Internal acts
+  try {
+    const actsResult = await renderInternalActs(transition, outputDir);
+    files.push(actsResult.filePath);
+    if (actsResult.warnings.length > 0) {
+      logger.warn({ warnings: actsResult.warnings }, "Предупреждения внутренних актов");
+    }
+  } catch (err) {
+    logger.error({ err }, "Ошибка генерации внутренних актов");
+    errors.push(`Внутренние акты: ${err instanceof Error ? err.message : "ошибка"}`);
+  }
+
+  // АОСР
+  try {
+    const aosrResult = await renderAosr(transition, outputDir);
+    files.push(aosrResult.filePath);
+    if (aosrResult.warnings.length > 0) {
+      logger.warn({ warnings: aosrResult.warnings }, "Предупреждения АОСР");
+    }
+  } catch (err) {
+    logger.error({ err }, "Ошибка генерации АОСР");
+    errors.push(`АОСР: ${err instanceof Error ? err.message : "ошибка"}`);
+  }
+
+  // Send generated files
+  if (files.length > 0) {
+    await ctx.api.editMessageText(
+      ctx.chat!.id,
+      status.message_id,
+      `📄 Сгенерировано файлов: ${files.length}`,
+    );
+    for (const filePath of files) {
+      try {
+        await ctx.replyWithDocument(new InputFile(filePath), {
+          caption: path.basename(filePath),
+        });
+      } catch (err) {
+        logger.error({ err, filePath }, "Ошибка отправки файла");
+        errors.push(`Отправка ${path.basename(filePath)}: ${err instanceof Error ? err.message : "ошибка"}`);
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    const errMsg = files.length === 0
+      ? `❌ Не удалось сгенерировать файлы:\n${errors.map((e) => `  • ${e}`).join("\n")}\n\nПереход сохранён (ID: ${transition.id}). Можно перегенерировать позже.`
+      : `⚠️ Часть файлов не создана:\n${errors.map((e) => `  • ${e}`).join("\n")}`;
+    await ctx.reply(errMsg);
+  } else if (files.length > 0) {
+    await ctx.reply(`✅ Готово: ${files.map((f) => path.basename(f)).join(", ")}`);
+  }
+}
+
 export function registerHandlers(bot: Bot): void {
+  const stores = initStores();
+
   // === Команды ===
 
   bot.command("start", async (ctx) => {
     await ctx.reply(
-      "👋 Привет! Я GNB Docs Bot — ассистент инженера ПТО.\n\n" +
+      "Привет! Я GNB Docs Bot — ассистент инженера ПТО.\n\n" +
       "Умею:\n" +
+      "• Создавать комплект актов ГНБ (внутренние + АОСР)\n" +
       "• Отвечать на вопросы по ГНБ документации\n" +
       "• Распознавать текст с фото (OCR)\n" +
-      "• Читать Excel .xls файлы\n" +
-      "• Искать по базе знаний\n\n" +
+      "• Читать Excel .xls файлы\n\n" +
       "Команды:\n" +
-      "/new — новый комплект актов\n" +
+      "/new_gnb — новый комплект актов\n" +
+      "/cancel — отменить текущий черновик\n" +
       "/help — справка\n\n" +
       "Отправь текст, фото или файл — я помогу!",
     );
@@ -53,10 +148,11 @@ export function registerHandlers(bot: Bot): void {
 
   bot.command("help", async (ctx) => {
     await ctx.reply(
-      "📖 Справка GNB Docs Bot\n\n" +
+      "Справка GNB Docs Bot\n\n" +
       "Команды:\n" +
       "/start — приветствие\n" +
-      "/new — создать новый комплект актов ГНБ\n" +
+      "/new_gnb — создать новый комплект актов ГНБ\n" +
+      "/cancel — отменить текущий черновик\n" +
       "/help — эта справка\n\n" +
       "Что можно отправить:\n" +
       "• Текст — задать вопрос или дать команду\n" +
@@ -69,20 +165,27 @@ export function registerHandlers(bot: Bot): void {
     );
   });
 
-  bot.command("new", async (ctx) => {
-    await ctx.reply(
-      "🆕 Создание нового комплекта актов ГНБ\n\n" +
-      "Для начала мне понадобятся:\n" +
-      "1. Заказчик и объект\n" +
-      "2. Номер ГНБ перехода\n\n" +
-      "Затем жду документы:\n" +
-      "☐ Исполнительная схема (PDF)\n" +
-      "☐ Акт осмотра (фото рукописного)\n" +
-      "☐ Паспорт трубы (PDF или фото)\n" +
-      "☐ Образец акта (Excel прошлого ГНБ) — опционально\n\n" +
-      "⚙️ Полный сценарий создания будет в следующей версии.\n" +
-      "Пока можешь отправлять документы — я распознаю данные.",
-    );
+  bot.command("new_gnb", async (ctx) => {
+    try {
+      const result = startFlow(ctx.chat.id, stores);
+      const parts = splitMessage(result.message);
+      for (const part of parts) {
+        await ctx.reply(part);
+      }
+    } catch (err) {
+      logger.error({ err }, "Ошибка запуска /new_gnb flow");
+      await ctx.reply("Ошибка при запуске нового перехода.");
+    }
+  });
+
+  bot.command("cancel", async (ctx) => {
+    const draft = getActiveDraft(ctx.chat.id, stores);
+    if (draft) {
+      stores.drafts.delete(draft.id);
+      await ctx.reply("Черновик отменён.");
+    } else {
+      await ctx.reply("Нет активного черновика.");
+    }
   });
 
   // === Фото → OCR ===
@@ -156,8 +259,8 @@ export function registerHandlers(bot: Bot): void {
         const localPath = path.join(tempDir, fileName);
 
         const fileUrl = `https://api.telegram.org/file/bot${bot.token}/${file.file_path}`;
-        const response = await fetch(fileUrl);
-        const buffer = Buffer.from(await response.arrayBuffer());
+        const dlResp = await fetch(fileUrl);
+        const buffer = Buffer.from(await dlResp.arrayBuffer());
         fs.writeFileSync(localPath, buffer);
 
         await ctx.api.editMessageText(ctx.chat.id, status.message_id, "📊 Читаю Excel...");
@@ -184,9 +287,9 @@ export function registerHandlers(bot: Bot): void {
           `- Другие важные данные, если есть\n\n` +
           `Формат: каждое поле на новой строке "Поле: значение". Только факты, без пояснений.`;
 
-        const response = await askClaude(prompt, { systemPrompt: getSystemPromptWithMemory() });
+        const claudeResp = await askClaude(prompt, { systemPrompt: getSystemPromptWithMemory() });
 
-        const result = `📊 Данные из ${fileName} (${sheetName}):\n\n${response}`;
+        const result = `📊 Данные из ${fileName} (${sheetName}):\n\n${claudeResp}`;
         const parts = splitMessage(result);
         await ctx.api.editMessageText(ctx.chat.id, status.message_id, parts[0]);
         for (let i = 1; i < parts.length; i++) {
@@ -215,14 +318,13 @@ export function registerHandlers(bot: Bot): void {
         const localPath = path.join(tempDir, fileName);
 
         const fileUrl = `https://api.telegram.org/file/bot${bot.token}/${file.file_path}`;
-        const response = await fetch(fileUrl);
-        const buffer = Buffer.from(await response.arrayBuffer());
+        const dlResp2 = await fetch(fileUrl);
+        const buffer = Buffer.from(await dlResp2.arrayBuffer());
         fs.writeFileSync(localPath, buffer);
 
         await ctx.api.editMessageText(ctx.chat.id, status.message_id, "🔍 Анализирую PDF...");
 
-        const text = await ocrDocument(localPath
-        );
+        const text = await ocrDocument(localPath);
 
         fs.unlinkSync(localPath);
 
@@ -243,12 +345,35 @@ export function registerHandlers(bot: Bot): void {
     }
   });
 
-  // === Текст → Claude ===
+  // === Текст → Flow engine or Claude ===
 
   bot.on("message:text", async (ctx) => {
     const text = ctx.message.text;
     if (!text || text.startsWith("/")) return; // команды обработаны выше
 
+    // Check for active /new_gnb flow — route to flow engine
+    try {
+      const flowResult = flowHandleInput(ctx.chat.id, text, stores);
+      if (flowResult) {
+        const parts = splitMessage(flowResult.message);
+        for (const part of parts) {
+          await ctx.reply(part);
+        }
+
+        // If flow finalized with a transition, render files
+        if (flowResult.done && flowResult.transition) {
+          await renderAndSend(ctx, flowResult.transition);
+        }
+
+        return; // handled by flow
+      }
+    } catch (err) {
+      logger.error({ err }, "Ошибка flow engine");
+      await ctx.reply("Ошибка в процессе создания перехода. Попробуйте /cancel и начните заново.");
+      return;
+    }
+
+    // No active flow — fall through to Claude
     const status = await ctx.reply("⏳ Думаю...");
 
     try {

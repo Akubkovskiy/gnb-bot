@@ -4,10 +4,10 @@ import path from "node:path";
 import { logger } from "../logger.js";
 import { getTempDir } from "../utils/paths.js";
 
-const TEMPLATE_PATH = path.join(process.cwd(), "templates", "Акты ОЭК шаблон.xlsx");
+const TEMPLATE_PATH = path.join(process.cwd(), "templates", "Акты ГНБ шаблон v2.xlsx");
 
 export interface ActData {
-  // Секция 1: Идентификация
+  // Секция 1: Идентификация (строки 2–11)
   title_line?: string;       // B3 — Наименование объекта (КЛ ГНБ)
   object_name?: string;      // B4 — Название стройки / объект
   address?: string;          // B5 — Адрес
@@ -15,40 +15,40 @@ export interface ActData {
   project_number?: string;   // B7 — Номер/шифр проекта
   start_date?: string;       // B8 — Дата начала работ
   end_date?: string;         // B9 — Дата окончания работ
-  executor?: string;         // B10 — Исполнитель
-  completion_date?: string;  // B11 — Дата завершения
+  executor?: string;         // B10 — Исполнитель (организация)
+  completion_date?: string;  // B11 — Дата завершения работ
 
-  // Секция 2: Организации
+  // Секция 2: Организации (строки 13–16)
   customer?: string;         // B14 — Заказчик
-  general_contractor?: string; // B15 — Генподрядчик
-  subcontractor_org?: string; // B16 — Субподрядчик (орг)
-  designer?: string;         // B17 — Проектировщик
+  contractor?: string;       // B15 — Подрядчик
+  designer?: string;         // B16 — Проектировщик
 
-  // Секция 3: Представители
-  exploitation?: string;     // B20 — Представитель эксплуатации
-  gen_representative?: string; // B21 — Представитель генподрядчика
-  subcontractor?: string;    // B22 — Представитель субподрядчика
-  supervision_rep?: string;  // B23 — Представитель тех.надзора
+  // Секция 3: Подписанты (строки 18–23)
+  // B-колонка = описание (орг + должн. + ФИО)
+  // C-колонка = подпись для актов (с чертой)
+  sign1_desc?: string;       // B20 — Представитель АО «ОЭК» (описание)
+  sign1_line?: string;       // C20 — Подпись 1 (с чертой)
+  sign2_desc?: string;       // B21 — Подрядчик (описание)
+  sign2_line?: string;       // C21 — Подпись 2 (с чертой)
+  sign3_desc?: string;       // B22 — Субподрядчик / опцион. (описание)
+  sign3_line?: string;       // C22 — Подпись 3 (с чертой)
+  tech_desc?: string;        // B23 — Тех.надзор (описание)
+  tech_line?: string;        // C23 — Подпись тех.надзора (с чертой)
 
-  // Секция 4: Подписи
-  sign_exploitation?: string; // B26 — Подпись 1
-  sign_general?: string;     // B27 — Подпись 2
-  sign_geodesist?: string;   // B28 — Подпись 3
-  sign_extra?: string;       // B29 — Подпись 4
+  // Секция 4: Труба (строки 25–27)
+  pipe_mark?: string;        // B26 — Марка трубы (полная, с паспортом)
+  pipe_diameter?: string;    // B27 — Диаметр трубы
 
-  // Секция 5: Труба
-  pipe_mark?: string;        // B32 — Марка трубы
-  pipe_diameter?: string;    // B33 — Диаметр трубы
-
-  // Секция 6: Параметры ГНБ (строка 37)
-  plan_length?: number;      // B37 — L план
-  profile_length?: number;   // C37 — L профиль
-  pipe_count?: number;       // D37 — Кол-во труб
-  drill_diameter?: number;   // F37 — d скважины
-  configuration?: string;    // G37 — Конфигурация
+  // Секция 5: Параметры ГНБ (строки 29–31)
+  // Заголовки в строке 30, значения в строке 31
+  plan_length?: number;      // B31 — L план
+  profile_length?: number;   // C31 — L профиль
+  pipe_count?: number;       // D31 — Кол-во труб
+  drill_diameter?: number;   // F31 — d скважины
+  configuration?: string;    // G31 — Конфигурация
 }
 
-// Карта: ключ JSON -> адрес ячейки на Лист1 (v2)
+// Карта: ключ JSON -> адрес ячейки на Лист1 (v3 layout / v2 шаблон)
 const CELL_MAP: Record<string, string> = {
   // Идентификация
   title_line:       "B3",
@@ -62,33 +62,36 @@ const CELL_MAP: Record<string, string> = {
   completion_date:  "B11",
   // Организации
   customer:         "B14",
-  general_contractor: "B15",
-  subcontractor_org: "B16",
-  designer:         "B17",
-  // Представители
-  exploitation:     "B20",
-  gen_representative: "B21",
-  subcontractor:    "B22",
-  supervision_rep:  "B23",
-  // Подписи
-  sign_exploitation: "B26",
-  sign_general:     "B27",
-  sign_geodesist:   "B28",
-  sign_extra:       "B29",
+  contractor:       "B15",
+  designer:         "B16",
+  // Подписанты (описание)
+  sign1_desc:       "B20",
+  sign2_desc:       "B21",
+  sign3_desc:       "B22",
+  tech_desc:        "B23",
+  // Подписанты (подпись с чертой)
+  sign1_line:       "C20",
+  sign2_line:       "C21",
+  sign3_line:       "C22",
+  tech_line:        "C23",
   // Труба
-  pipe_mark:        "B32",
-  pipe_diameter:    "B33",
+  pipe_mark:        "B26",
+  pipe_diameter:    "B27",
   // Параметры ГНБ
-  plan_length:      "B37",
-  profile_length:   "C37",
-  pipe_count:       "D37",
-  drill_diameter:   "F37",
-  configuration:    "G37",
+  plan_length:      "B31",
+  profile_length:   "C31",
+  pipe_count:       "D31",
+  drill_diameter:   "F31",
+  configuration:    "G31",
 };
 
 /**
- * Заполняет шаблон "Акты ОЭК" данными и возвращает путь к .xlsx файлу.
- * Формулы на остальных 9 листах обновятся автоматически при открытии в Excel.
+ * Заполняет шаблон "Акты ГНБ" данными и возвращает путь к .xlsx файлу.
+ * Формулы на остальных 10 листах обновятся автоматически при открытии в Excel.
+ *
+ * @deprecated Use `renderInternalActs` from `../renderer/internal-acts.js` instead.
+ * This function uses flat key-value pairs; the new renderer works with domain Transition objects.
+ * Will be removed after Phase 4 integration.
  */
 export async function fillActTemplate(
   data: ActData,
@@ -110,10 +113,10 @@ export async function fillActTemplate(
     }
   }
 
-  // A37 (номер ГНБ в таблице) = gnb_number если не указан отдельно
+  // A31 (номер ГНБ в таблице параметров) = gnb_number если не указан отдельно
   if (data.gnb_number) {
-    sheet.getCell("A37").value = data.gnb_number;
-    filled.push("A37 (auto)");
+    sheet.getCell("A31").value = data.gnb_number;
+    filled.push("A31 (auto)");
   }
 
   const tempDir = getTempDir();

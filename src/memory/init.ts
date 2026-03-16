@@ -9,6 +9,12 @@ const INITIAL_FILES: Record<string, object> = {
   "people.json": { specialists: [] },
   "organizations.json": { organizations: [] },
   "gnb-transitions.json": { transitions: [] },
+  "customers.json": { customers: {} },
+  "preferences.json": {
+    default_city: "г. Москва",
+    default_pipe_count: 2,
+    typical_responses: { pipe_same: true, sign3_present: true },
+  },
 };
 
 /**
@@ -17,11 +23,13 @@ const INITIAL_FILES: Record<string, object> = {
 export function initMemory(): void {
   const memDir = getMemoryDir();
 
-  // Создаём директорию (и вложенную docs/)
-  const docsDir = path.join(memDir, "docs");
-  if (!fs.existsSync(docsDir)) {
-    fs.mkdirSync(docsDir, { recursive: true });
-    logger.info({ path: docsDir }, "Создана директория .gnb-memory/docs");
+  // Создаём директории (docs/ и drafts/)
+  for (const subDir of ["docs", "drafts"]) {
+    const dirPath = path.join(memDir, subDir);
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
+      logger.info({ path: dirPath }, `Создана директория .gnb-memory/${subDir}`);
+    }
   }
 
   // Создаём JSON-файлы если не существуют
