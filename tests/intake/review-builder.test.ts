@@ -15,6 +15,7 @@ import { getVolatility, getFieldLabel, needsAttentionIfInherited, fieldsByVolati
 import { detectBaseConflicts, detectInternalConflicts, getAllConflicts } from "../../src/intake/conflicts.js";
 import { buildPassportSummary, hasExecutiveSchemeSource, requiresGeometryManualInput } from "../../src/intake/passport-builder.js";
 import { buildReviewReport, summarizeBase } from "../../src/intake/review-builder.js";
+import { valuesMatch } from "../../src/intake/conflicts.js";
 
 let tmpDir: string;
 let store: IntakeDraftStore;
@@ -355,6 +356,84 @@ describe("review-builder", () => {
       (m) => m.field_name === "gnb_params.profile_length" && m.required,
     );
     expect(schemeMissing).toBeDefined();
+  });
+});
+
+// === P1 fix: changed fields detection ===
+
+describe("changed-fields detection", () => {
+  it("reports changed field when override differs from base value", () => {
+    const base = seedBaseTransition();
+    const draft = store.create(1);
+    applyBaseTransitionToDraft(draft.id, base, store);
+
+    // Override project_number (semi-stable, inherited from base as "ШФ-123")
+    store.setField(draft.id, makeField("project_number", "ШФ-456", { source_type: "manual_text", source_id: "manual" }));
+
+    const loaded = store.get(draft.id)!;
+    const report = buildReviewReport(loaded, base);
+
+    const projChanged = report.changed.find((c) => c.field_name === "project_number");
+    expect(projChanged).toBeDefined();
+    expect(projChanged!.old_value).toBe("ШФ-123");
+    expect(projChanged!.new_value).toBe("ШФ-456");
+  });
+
+  it("does NOT report changed for volatile fields (expected to differ)", () => {
+    const base = seedBaseTransition();
+    const draft = store.create(1);
+    applyBaseTransitionToDraft(draft.id, base, store);
+
+    // Set volatile fields — these should not appear in changed
+    store.setField(draft.id, makeField("gnb_number", "ЗП № 5-5"));
+    store.setField(draft.id, makeField("address", "г. Москва, Новый адрес"));
+
+    const loaded = store.get(draft.id)!;
+    const report = buildReviewReport(loaded, base);
+
+    expect(report.changed.find((c) => c.field_name === "gnb_number")).toBeUndefined();
+    expect(report.changed.find((c) => c.field_name === "address")).toBeUndefined();
+  });
+
+  it("does NOT report changed when value matches base", () => {
+    const base = seedBaseTransition();
+    const draft = store.create(1);
+    applyBaseTransitionToDraft(draft.id, base, store);
+
+    // Override with same value — should not be in changed
+    store.setField(draft.id, makeField("project_number", "ШФ-123", { source_type: "pdf", source_id: "new-pdf" }));
+
+    const loaded = store.get(draft.id)!;
+    const report = buildReviewReport(loaded, base);
+
+    expect(report.changed.find((c) => c.field_name === "project_number")).toBeUndefined();
+  });
+});
+
+// === P2 fix: semantic object comparison ===
+
+describe("valuesMatch semantic comparison", () => {
+  it("matches objects with different key order", () => {
+    const a = { name: "АО «ОЭК»", inn: "123", ogrn: "456" };
+    const b = { ogrn: "456", name: "АО «ОЭК»", inn: "123" };
+    expect(valuesMatch(a, b)).toBe(true);
+  });
+
+  it("ignores undefined properties in comparison", () => {
+    const a = { name: "АО «ОЭК»", phone: "123" };
+    const b = { name: "АО «ОЭК»", phone: "123", extra: undefined };
+    expect(valuesMatch(a, b)).toBe(true);
+  });
+
+  it("detects real difference in objects", () => {
+    const a = { full_name: "Гайдуков Н.И.", position: "Главный специалист" };
+    const b = { full_name: "Попов А.Д.", position: "Главный специалист" };
+    expect(valuesMatch(a, b)).toBe(false);
+  });
+
+  it("string comparison is case-insensitive trimmed", () => {
+    expect(valuesMatch("  Москва ", "москва")).toBe(true);
+    expect(valuesMatch("Москва", "Питер")).toBe(false);
   });
 });
 

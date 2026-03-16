@@ -95,7 +95,7 @@ export function getAllConflicts(
 
 // === Helpers ===
 
-function getBaseFieldValue(base: Transition, fieldName: FieldName): unknown {
+export function getBaseFieldValue(base: Transition, fieldName: FieldName): unknown {
   switch (fieldName) {
     case "customer": return base.customer;
     case "object": return base.object;
@@ -125,14 +125,10 @@ function getBaseFieldValue(base: Transition, fieldName: FieldName): unknown {
   }
 }
 
-function valuesMatch(a: unknown, b: unknown): boolean {
+export function valuesMatch(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (a == null && b == null) return true;
-
-  // Deep compare for objects
-  if (typeof a === "object" && typeof b === "object" && a !== null && b !== null) {
-    return JSON.stringify(a) === JSON.stringify(b);
-  }
+  if (a == null || b == null) return false;
 
   // Numeric tolerance
   if (typeof a === "number" && typeof b === "number") {
@@ -144,5 +140,29 @@ function valuesMatch(a: unknown, b: unknown): boolean {
     return a.trim().toLowerCase() === b.trim().toLowerCase();
   }
 
+  // Deep compare for objects — normalize to avoid key-order / undefined-property issues
+  if (typeof a === "object" && typeof b === "object") {
+    return normalizedJsonEqual(a, b);
+  }
+
   return false;
+}
+
+/** Deep-equal that ignores key order and strips undefined values. */
+function normalizedJsonEqual(a: unknown, b: unknown): boolean {
+  return JSON.stringify(sortKeys(a)) === JSON.stringify(sortKeys(b));
+}
+
+function sortKeys(obj: unknown): unknown {
+  if (obj === null || obj === undefined) return obj;
+  if (Array.isArray(obj)) return obj.map(sortKeys);
+  if (typeof obj === "object") {
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(obj as Record<string, unknown>).sort()) {
+      const val = (obj as Record<string, unknown>)[key];
+      if (val !== undefined) sorted[key] = sortKeys(val);
+    }
+    return sorted;
+  }
+  return obj;
 }

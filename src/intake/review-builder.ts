@@ -20,7 +20,7 @@ import type {
   ReviewMissingField,
 } from "./review-types.js";
 import { buildPassportSummary, requiresGeometryManualInput, hasExecutiveSchemeSource } from "./passport-builder.js";
-import { getAllConflicts } from "./conflicts.js";
+import { getAllConflicts, getBaseFieldValue, valuesMatch } from "./conflicts.js";
 import { getFieldLabel, getVolatility, needsAttentionIfInherited } from "./field-policy.js";
 
 /**
@@ -88,17 +88,17 @@ function buildChangedReport(draft: IntakeDraft, base?: Transition): ReviewChange
   for (const field of draft.fields) {
     if (field.conflict_with_existing) continue;
     if (field.source_id?.startsWith(baseSourcePrefix)) continue; // inherited, not changed
+    if (getVolatility(field.field_name) === "volatile") continue; // volatile expected to differ
 
-    // Check if base had a different value
-    const baseField = draft.fields.find(
-      (f) => f.field_name === field.field_name && f.source_id?.startsWith(baseSourcePrefix) && f.conflict_with_existing,
-    );
-    // Or compare with base transition directly
-    if (baseField) {
+    // Compare directly against base transition value
+    const baseValue = getBaseFieldValue(base, field.field_name);
+    if (baseValue === undefined) continue; // base had no value for this field
+
+    if (!valuesMatch(field.value, baseValue)) {
       changed.push({
         field_name: field.field_name,
         label: getFieldLabel(field.field_name),
-        old_value: baseField.value,
+        old_value: baseValue,
         new_value: field.value,
         old_source: base.gnb_number || base.id,
         new_source: field.source_id,
