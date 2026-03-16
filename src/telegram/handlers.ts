@@ -6,35 +6,39 @@ import { readSheet1 } from "../documents/excel.js";
 import { getTempDir, getMemoryDir } from "../utils/paths.js";
 import { buildMemoryContext } from "../memory/reader.js";
 import { logger } from "../logger.js";
-import { startFlow, handleInput as flowHandleInput, getActiveDraft } from "../flow/new-flow.js";
-import type { FlowStores, FlowResponse } from "../flow/flow-types.js";
 import type { Transition } from "../domain/types.js";
-import { DraftStore } from "../store/drafts.js";
+import type { IntakeStores } from "../intake/intake-types.js";
+import { IntakeDraftStore } from "../store/intake-drafts.js";
 import { TransitionStore } from "../store/transitions.js";
 import { CustomerStore } from "../store/customers.js";
 import { PeopleStore } from "../store/people.js";
 import { renderInternalActs } from "../renderer/internal-acts.js";
 import { renderAosr } from "../renderer/aosr.js";
 import { getProjectDir } from "../utils/paths.js";
+import {
+  startIntake,
+  handleIntakeText,
+  handleIntakeDocument,
+  handleReview,
+  cancelIntake,
+  hasActiveIntake,
+} from "../intake/intake-engine.js";
 
 const CLAUDE_SYSTEM = fs.readFileSync(
   path.join(process.cwd(), "CLAUDE.md"),
   "utf-8",
 );
 
-// Собирает system prompt + актуальный контекст из .gnb-memory
 function getSystemPromptWithMemory(): string {
   const memory = buildMemoryContext();
   return `${CLAUDE_SYSTEM}\n\n${memory}`;
 }
 
-// Разбить длинное сообщение на части по 4096 символов
 function splitMessage(text: string, maxLen = 4096): string[] {
   if (text.length <= maxLen) return [text];
   const parts: string[] = [];
   let remaining = text;
   while (remaining.length > 0) {
-    // Ищем последний перенос строки в пределах лимита
     let cut = remaining.lastIndexOf("\n", maxLen);
     if (cut <= 0) cut = maxLen;
     parts.push(remaining.slice(0, cut));
@@ -43,11 +47,11 @@ function splitMessage(text: string, maxLen = 4096): string[] {
   return parts;
 }
 
-/** Initialize stores once per bot lifetime. */
-function initStores(): FlowStores {
+/** Initialize intake stores. */
+function initIntakeStores(): IntakeStores {
   const memDir = getMemoryDir();
   return {
-    drafts: new DraftStore(memDir),
+    intakeDrafts: new IntakeDraftStore(memDir),
     transitions: new TransitionStore(memDir),
     customers: new CustomerStore(memDir),
     people: new PeopleStore(memDir),
@@ -56,7 +60,6 @@ function initStores(): FlowStores {
 
 /**
  * Render XLSX files from a finalized transition and send via Telegram.
- * Does not throw — logs errors and sends error message to user.
  */
 async function renderAndSend(
   ctx: Context,
@@ -72,7 +75,6 @@ async function renderAndSend(
   const files: string[] = [];
   const errors: string[] = [];
 
-  // Internal acts
   try {
     const actsResult = await renderInternalActs(transition, outputDir);
     files.push(actsResult.filePath);
@@ -84,7 +86,6 @@ async function renderAndSend(
     errors.push(`Внутренние акты: ${err instanceof Error ? err.message : "ошибка"}`);
   }
 
-  // АОСР
   try {
     const aosrResult = await renderAosr(transition, outputDir);
     files.push(aosrResult.filePath);
@@ -96,7 +97,6 @@ async function renderAndSend(
     errors.push(`АОСР: ${err instanceof Error ? err.message : "ошибка"}`);
   }
 
-  // Send generated files
   if (files.length > 0) {
     await ctx.api.editMessageText(
       ctx.chat!.id,
@@ -125,22 +125,43 @@ async function renderAndSend(
   }
 }
 
-export function registerHandlers(bot: Bot): void {
-  const stores = initStores();
+/** Download Telegram file to temp dir. Returns local path. */
+async function downloadTelegramFile(
+  bot: Bot,
+  fileId: string,
+  fileName: string,
+): Promise<string> {
+  const file = await bot.api.getFile(fileId);
+  if (!file.file_path) throw new Error("Не удалось получить файл");
 
-  // === Команды ===
+  const tempDir = getTempDir();
+  fs.mkdirSync(tempDir, { recursive: true });
+  const localPath = path.join(tempDir, fileName);
+
+  const fileUrl = `https://api.telegram.org/file/bot${bot.token}/${file.file_path}`;
+  const response = await fetch(fileUrl);
+  const buffer = Buffer.from(await response.arrayBuffer());
+  fs.writeFileSync(localPath, buffer);
+
+  return localPath;
+}
+
+export function registerHandlers(bot: Bot): void {
+  const stores = initIntakeStores();
+
+  // === Commands ===
 
   bot.command("start", async (ctx) => {
     await ctx.reply(
       "Привет! Я GNB Docs Bot — ассистент инженера ПТО.\n\n" +
       "Умею:\n" +
       "• Создавать комплект актов ГНБ (внутренние + АОСР)\n" +
-      "• Отвечать на вопросы по ГНБ документации\n" +
-      "• Распознавать текст с фото (OCR)\n" +
-      "• Читать Excel .xls файлы\n\n" +
+      "• Распознавать документы (PDF, фото, Excel)\n" +
+      "• Собирать Паспорт ГНБ из разных источников\n\n" +
       "Команды:\n" +
       "/new_gnb — новый комплект актов\n" +
-      "/cancel — отменить текущий черновик\n" +
+      "/review_gnb — сводка текущего черновика\n" +
+      "/cancel — отменить черновик\n" +
       "/help — справка\n\n" +
       "Отправь текст, фото или файл — я помогу!",
     );
@@ -151,245 +172,220 @@ export function registerHandlers(bot: Bot): void {
       "Справка GNB Docs Bot\n\n" +
       "Команды:\n" +
       "/start — приветствие\n" +
-      "/new_gnb — создать новый комплект актов ГНБ\n" +
-      "/cancel — отменить текущий черновик\n" +
+      "/new_gnb — создать новый ГНБ переход\n" +
+      "/review_gnb — сводка текущего черновика\n" +
+      "/cancel — отменить черновик\n" +
       "/help — эта справка\n\n" +
-      "Что можно отправить:\n" +
-      "• Текст — задать вопрос или дать команду\n" +
-      "• Фото — распознать текст (OCR)\n" +
-      "• Excel .xls — прочитать данные с Лист1\n\n" +
-      "Примеры вопросов:\n" +
-      "• «Кто технадзор в 3 районе?»\n" +
-      "• «Какая длина у ГНБ 11-11?»\n" +
-      "• «Запомни телефон Байдакова +7 916 ...»",
+      "Как работать:\n" +
+      "1. /new_gnb → выбрать заказчика, объект, номер\n" +
+      "2. Присылать данные: PDF, фото, Excel, текст\n" +
+      "3. /review_gnb → проверить что собрано\n" +
+      "4. Подтвердить → получить акты\n\n" +
+      "Бот извлекает данные из документов автоматически.\n" +
+      "Ваши правки всегда приоритетнее.",
     );
   });
 
   bot.command("new_gnb", async (ctx) => {
     try {
-      const result = startFlow(ctx.chat.id, stores);
+      const result = startIntake(ctx.chat.id, stores);
       const parts = splitMessage(result.message);
       for (const part of parts) {
         await ctx.reply(part);
       }
     } catch (err) {
-      logger.error({ err }, "Ошибка запуска /new_gnb flow");
+      logger.error({ err }, "Ошибка запуска /new_gnb");
       await ctx.reply("Ошибка при запуске нового перехода.");
     }
   });
 
-  bot.command("cancel", async (ctx) => {
-    const draft = getActiveDraft(ctx.chat.id, stores);
-    if (draft) {
-      stores.drafts.delete(draft.id);
-      await ctx.reply("Черновик отменён.");
-    } else {
-      await ctx.reply("Нет активного черновика.");
-    }
-  });
-
-  // === Фото → OCR ===
-
-  bot.on("message:photo", async (ctx) => {
-    const status = await ctx.reply("⏳ Скачиваю фото...");
-
+  bot.command("review_gnb", async (ctx) => {
     try {
-      // Берём фото максимального размера
-      const photo = ctx.message.photo[ctx.message.photo.length - 1];
-      const file = await ctx.api.getFile(photo.file_id);
-
-      if (!file.file_path) {
-        await ctx.api.editMessageText(ctx.chat.id, status.message_id, "❌ Не удалось получить файл");
-        return;
-      }
-
-      // Скачиваем
-      const tempDir = getTempDir();
-      fs.mkdirSync(tempDir, { recursive: true });
-      const localPath = path.join(tempDir, `photo_${Date.now()}.jpg`);
-
-      const fileUrl = `https://api.telegram.org/file/bot${bot.token}/${file.file_path}`;
-      const response = await fetch(fileUrl);
-      const buffer = Buffer.from(await response.arrayBuffer());
-      fs.writeFileSync(localPath, buffer);
-
-      await ctx.api.editMessageText(ctx.chat.id, status.message_id, "🔍 Анализирую документ...");
-
-      // OCR с автоопределением типа документа
-      const text = await ocrDocument(localPath);
-
-      // Удаляем temp файл
-      fs.unlinkSync(localPath);
-
-      // Отправляем результат
-      const parts = splitMessage(`📋 Результат:\n\n${text}`);
-      await ctx.api.editMessageText(ctx.chat.id, status.message_id, parts[0]);
-      for (let i = 1; i < parts.length; i++) {
-        await ctx.reply(parts[i]);
+      const result = handleReview(ctx.chat.id, stores);
+      const parts = splitMessage(result.message);
+      for (const part of parts) {
+        await ctx.reply(part);
       }
     } catch (err) {
-      logger.error({ err }, "Ошибка OCR");
-      await ctx.api.editMessageText(
-        ctx.chat.id, status.message_id,
-        `❌ Ошибка при распознавании: ${err instanceof Error ? err.message : "неизвестная ошибка"}`,
-      );
+      logger.error({ err }, "Ошибка /review_gnb");
+      await ctx.reply("Ошибка при формировании сводки.");
     }
   });
 
-  // === Документы (Excel .xls) ===
+  bot.command("cancel", async (ctx) => {
+    const result = cancelIntake(ctx.chat.id, stores);
+    await ctx.reply(result.message);
+  });
+
+  // === Photo → intake or OCR ===
+
+  bot.on("message:photo", async (ctx) => {
+    const chatId = ctx.chat.id;
+
+    // If active intake — route to intake pipeline
+    if (hasActiveIntake(chatId)) {
+      const status = await ctx.reply("🔍 Анализирую фото...");
+      try {
+        const photo = ctx.message.photo[ctx.message.photo.length - 1];
+        const localPath = await downloadTelegramFile(bot, photo.file_id, `photo_${Date.now()}.jpg`);
+
+        const result = await handleIntakeDocument(
+          chatId, localPath, `photo_${Date.now()}.jpg`, stores, askClaude,
+        );
+
+        fs.unlinkSync(localPath);
+
+        if (result) {
+          const parts = splitMessage(result.message);
+          await ctx.api.editMessageText(chatId, status.message_id, parts[0]);
+          for (let i = 1; i < parts.length; i++) await ctx.reply(parts[i]);
+          return;
+        }
+      } catch (err) {
+        logger.error({ err }, "Ошибка intake фото");
+        await ctx.api.editMessageText(chatId, status.message_id, `❌ Ошибка: ${err instanceof Error ? err.message : "неизвестная ошибка"}`);
+        return;
+      }
+    }
+
+    // Fallback: general OCR
+    const status = await ctx.reply("⏳ Скачиваю фото...");
+    try {
+      const photo = ctx.message.photo[ctx.message.photo.length - 1];
+      const localPath = await downloadTelegramFile(bot, photo.file_id, `photo_${Date.now()}.jpg`);
+
+      await ctx.api.editMessageText(chatId, status.message_id, "🔍 Анализирую документ...");
+      const text = await ocrDocument(localPath);
+      fs.unlinkSync(localPath);
+
+      const parts = splitMessage(`📋 Результат:\n\n${text}`);
+      await ctx.api.editMessageText(chatId, status.message_id, parts[0]);
+      for (let i = 1; i < parts.length; i++) await ctx.reply(parts[i]);
+    } catch (err) {
+      logger.error({ err }, "Ошибка OCR");
+      await ctx.api.editMessageText(chatId, status.message_id, `❌ Ошибка: ${err instanceof Error ? err.message : "неизвестная ошибка"}`);
+    }
+  });
+
+  // === Documents (PDF, Excel) → intake or general ===
 
   bot.on("message:document", async (ctx) => {
+    const chatId = ctx.chat.id;
     const doc = ctx.message.document;
     const fileName = doc.file_name || "unknown";
     const ext = path.extname(fileName).toLowerCase();
 
-    // Обработка .xls файлов
-    if (ext === ".xls" || ext === ".xlsx") {
-      const status = await ctx.reply(`⏳ Скачиваю ${fileName}...`);
-
+    // If active intake — route to intake pipeline
+    if (hasActiveIntake(chatId) && [".pdf", ".xls", ".xlsx", ".jpg", ".jpeg", ".png"].includes(ext)) {
+      const status = await ctx.reply(`🔍 Обрабатываю ${fileName}...`);
       try {
-        const file = await ctx.api.getFile(doc.file_id);
-        if (!file.file_path) {
-          await ctx.api.editMessageText(ctx.chat.id, status.message_id, "❌ Не удалось получить файл");
-          return;
-        }
+        const localPath = await downloadTelegramFile(bot, doc.file_id, fileName);
 
-        const tempDir = getTempDir();
-        fs.mkdirSync(tempDir, { recursive: true });
-        const localPath = path.join(tempDir, fileName);
+        const result = await handleIntakeDocument(
+          chatId, localPath, fileName, stores, askClaude,
+        );
 
-        const fileUrl = `https://api.telegram.org/file/bot${bot.token}/${file.file_path}`;
-        const dlResp = await fetch(fileUrl);
-        const buffer = Buffer.from(await dlResp.arrayBuffer());
-        fs.writeFileSync(localPath, buffer);
-
-        await ctx.api.editMessageText(ctx.chat.id, status.message_id, "📊 Читаю Excel...");
-
-        const { sheetName, text } = readSheet1(localPath);
-
-        // Удаляем temp файл
         fs.unlinkSync(localPath);
 
-        // Отправляем данные Claude для умного извлечения
+        if (result) {
+          const parts = splitMessage(result.message);
+          await ctx.api.editMessageText(chatId, status.message_id, parts[0]);
+          for (let i = 1; i < parts.length; i++) await ctx.reply(parts[i]);
+          return;
+        }
+      } catch (err) {
+        logger.error({ err }, "Ошибка intake документа");
+        await ctx.api.editMessageText(chatId, status.message_id, `❌ Ошибка: ${err instanceof Error ? err.message : "неизвестная ошибка"}`);
+        return;
+      }
+    }
+
+    // Fallback: general document handling
+    if (ext === ".xls" || ext === ".xlsx") {
+      const status = await ctx.reply(`⏳ Скачиваю ${fileName}...`);
+      try {
+        const localPath = await downloadTelegramFile(bot, doc.file_id, fileName);
+        await ctx.api.editMessageText(chatId, status.message_id, "📊 Читаю Excel...");
+
+        const { sheetName, text } = readSheet1(localPath);
+        fs.unlinkSync(localPath);
+
         const prompt =
           `Ниже — данные из Excel-файла "${fileName}", лист "${sheetName}".\n` +
           `Каждая строка в формате "R<номер>: ячейка1 | ячейка2 | ..."\n\n` +
           `${text}\n\n` +
-          `Извлеки и покажи ключевые данные из этого акта ГНБ:\n` +
-          `- Наименование объекта\n` +
-          `- Адрес\n` +
-          `- Заказчик, Генподрядчик, Субподрядчик\n` +
-          `- Номер перехода ГНБ\n` +
-          `- Номер/шифр проекта\n` +
-          `- Дата начала и окончания работ\n` +
-          `- Марка трубы, диаметр, длина\n` +
-          `- Исполнитель\n` +
-          `- Другие важные данные, если есть\n\n` +
-          `Формат: каждое поле на новой строке "Поле: значение". Только факты, без пояснений.`;
+          `Извлеки ключевые данные из этого акта ГНБ. Формат: каждое поле на новой строке "Поле: значение".`;
 
         const claudeResp = await askClaude(prompt, { systemPrompt: getSystemPromptWithMemory() });
-
         const result = `📊 Данные из ${fileName} (${sheetName}):\n\n${claudeResp}`;
         const parts = splitMessage(result);
-        await ctx.api.editMessageText(ctx.chat.id, status.message_id, parts[0]);
-        for (let i = 1; i < parts.length; i++) {
-          await ctx.reply(parts[i]);
-        }
+        await ctx.api.editMessageText(chatId, status.message_id, parts[0]);
+        for (let i = 1; i < parts.length; i++) await ctx.reply(parts[i]);
       } catch (err) {
         logger.error({ err }, "Ошибка чтения Excel");
-        await ctx.api.editMessageText(
-          ctx.chat.id, status.message_id,
-          `❌ Ошибка чтения Excel: ${err instanceof Error ? err.message : "неизвестная ошибка"}`,
-        );
+        await ctx.api.editMessageText(chatId, status.message_id, `❌ Ошибка: ${err instanceof Error ? err.message : "неизвестная ошибка"}`);
       }
     } else if (ext === ".pdf") {
-      // PDF → OCR через Claude CLI
       const status = await ctx.reply(`⏳ Скачиваю ${fileName}...`);
-
       try {
-        const file = await ctx.api.getFile(doc.file_id);
-        if (!file.file_path) {
-          await ctx.api.editMessageText(ctx.chat.id, status.message_id, "❌ Не удалось получить файл");
-          return;
-        }
-
-        const tempDir = getTempDir();
-        fs.mkdirSync(tempDir, { recursive: true });
-        const localPath = path.join(tempDir, fileName);
-
-        const fileUrl = `https://api.telegram.org/file/bot${bot.token}/${file.file_path}`;
-        const dlResp2 = await fetch(fileUrl);
-        const buffer = Buffer.from(await dlResp2.arrayBuffer());
-        fs.writeFileSync(localPath, buffer);
-
-        await ctx.api.editMessageText(ctx.chat.id, status.message_id, "🔍 Анализирую PDF...");
+        const localPath = await downloadTelegramFile(bot, doc.file_id, fileName);
+        await ctx.api.editMessageText(chatId, status.message_id, "🔍 Анализирую PDF...");
 
         const text = await ocrDocument(localPath);
-
         fs.unlinkSync(localPath);
 
         const parts = splitMessage(`📄 Данные из ${fileName}:\n\n${text}`);
-        await ctx.api.editMessageText(ctx.chat.id, status.message_id, parts[0]);
-        for (let i = 1; i < parts.length; i++) {
-          await ctx.reply(parts[i]);
-        }
+        await ctx.api.editMessageText(chatId, status.message_id, parts[0]);
+        for (let i = 1; i < parts.length; i++) await ctx.reply(parts[i]);
       } catch (err) {
         logger.error({ err }, "Ошибка обработки PDF");
-        await ctx.api.editMessageText(
-          ctx.chat.id, status.message_id,
-          `❌ Ошибка обработки PDF: ${err instanceof Error ? err.message : "неизвестная ошибка"}`,
-        );
+        await ctx.api.editMessageText(chatId, status.message_id, `❌ Ошибка: ${err instanceof Error ? err.message : "неизвестная ошибка"}`);
       }
     } else {
       await ctx.reply(`📎 Получен файл: ${fileName}\nПоддерживаются: .xls, .xlsx, .pdf`);
     }
   });
 
-  // === Текст → Flow engine or Claude ===
+  // === Text → intake engine or Claude ===
 
   bot.on("message:text", async (ctx) => {
     const text = ctx.message.text;
-    if (!text || text.startsWith("/")) return; // команды обработаны выше
+    if (!text || text.startsWith("/")) return;
 
-    // Check for active /new_gnb flow — route to flow engine
+    const chatId = ctx.chat.id;
+
+    // Check for active intake session
     try {
-      const flowResult = flowHandleInput(ctx.chat.id, text, stores);
-      if (flowResult) {
-        const parts = splitMessage(flowResult.message);
+      const intakeResult = handleIntakeText(chatId, text, stores);
+      if (intakeResult) {
+        const parts = splitMessage(intakeResult.message);
         for (const part of parts) {
           await ctx.reply(part);
         }
 
-        // If flow finalized with a transition, render files
-        if (flowResult.done && flowResult.transition) {
-          await renderAndSend(ctx, flowResult.transition);
+        // If finalized with transition, render files
+        if (intakeResult.done && intakeResult.transition) {
+          await renderAndSend(ctx, intakeResult.transition);
         }
 
-        return; // handled by flow
+        return;
       }
     } catch (err) {
-      logger.error({ err }, "Ошибка flow engine");
+      logger.error({ err }, "Ошибка intake engine");
       await ctx.reply("Ошибка в процессе создания перехода. Попробуйте /cancel и начните заново.");
       return;
     }
 
-    // No active flow — fall through to Claude
+    // No active intake — fall through to Claude
     const status = await ctx.reply("⏳ Думаю...");
-
     try {
       const response = await askClaude(text, { systemPrompt: getSystemPromptWithMemory() });
-
       const parts = splitMessage(response);
-      await ctx.api.editMessageText(ctx.chat.id, status.message_id, parts[0]);
-      for (let i = 1; i < parts.length; i++) {
-        await ctx.reply(parts[i]);
-      }
+      await ctx.api.editMessageText(chatId, status.message_id, parts[0]);
+      for (let i = 1; i < parts.length; i++) await ctx.reply(parts[i]);
     } catch (err) {
       logger.error({ err }, "Ошибка Claude");
-      await ctx.api.editMessageText(
-        ctx.chat.id, status.message_id,
-        `❌ Ошибка: ${err instanceof Error ? err.message : "неизвестная ошибка"}`,
-      );
+      await ctx.api.editMessageText(chatId, status.message_id, `❌ Ошибка: ${err instanceof Error ? err.message : "неизвестная ошибка"}`);
     }
   });
 }
