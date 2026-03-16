@@ -22,7 +22,10 @@ import {
   handleReview,
   cancelIntake,
   hasActiveIntake,
+  handleCallback,
 } from "../intake/intake-engine.js";
+import type { IntakeResponse, InlineButton } from "../intake/intake-types.js";
+import { InlineKeyboard } from "grammy";
 
 const CLAUDE_SYSTEM = fs.readFileSync(
   path.join(process.cwd(), "CLAUDE.md"),
@@ -146,6 +149,35 @@ async function downloadTelegramFile(
   return localPath;
 }
 
+/** Build Grammy InlineKeyboard from button rows. */
+function buildKeyboard(buttons: InlineButton[][]): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const row of buttons) {
+    for (const btn of row) {
+      kb.text(btn.text, btn.callback_data);
+    }
+    kb.row();
+  }
+  return kb;
+}
+
+/** Send an IntakeResponse, handling buttons and message splitting. */
+async function sendIntakeResponse(
+  ctx: Context,
+  result: IntakeResponse,
+): Promise<void> {
+  const parts = splitMessage(result.message);
+  // Only attach keyboard to last message part
+  for (let i = 0; i < parts.length; i++) {
+    const isLast = i === parts.length - 1;
+    if (isLast && result.buttons) {
+      await ctx.reply(parts[i], { reply_markup: buildKeyboard(result.buttons) });
+    } else {
+      await ctx.reply(parts[i]);
+    }
+  }
+}
+
 export function registerHandlers(bot: Bot): void {
   const stores = initIntakeStores();
 
@@ -189,10 +221,7 @@ export function registerHandlers(bot: Bot): void {
   bot.command("new_gnb", async (ctx) => {
     try {
       const result = startIntake(ctx.chat.id, stores);
-      const parts = splitMessage(result.message);
-      for (const part of parts) {
-        await ctx.reply(part);
-      }
+      await sendIntakeResponse(ctx, result);
     } catch (err) {
       logger.error({ err }, "Ошибка запуска /new_gnb");
       await ctx.reply("Ошибка при запуске нового перехода.");
@@ -202,10 +231,7 @@ export function registerHandlers(bot: Bot): void {
   bot.command("review_gnb", async (ctx) => {
     try {
       const result = handleReview(ctx.chat.id, stores);
-      const parts = splitMessage(result.message);
-      for (const part of parts) {
-        await ctx.reply(part);
-      }
+      await sendIntakeResponse(ctx, result);
     } catch (err) {
       logger.error({ err }, "Ошибка /review_gnb");
       await ctx.reply("Ошибка при формировании сводки.");
@@ -215,6 +241,31 @@ export function registerHandlers(bot: Bot): void {
   bot.command("cancel", async (ctx) => {
     const result = cancelIntake(ctx.chat.id, stores);
     await ctx.reply(result.message);
+  });
+
+  // === Callback queries (inline buttons) ===
+
+  bot.on("callback_query:data", async (ctx) => {
+    const data = ctx.callbackQuery.data;
+    const chatId = ctx.chat?.id;
+    if (!chatId) return;
+
+    try {
+      const result = handleCallback(chatId, data, stores);
+      if (result) {
+        await ctx.answerCallbackQuery();
+        await sendIntakeResponse(ctx, result);
+
+        if (result.done && result.transition) {
+          await renderAndSend(ctx, result.transition);
+        }
+      } else {
+        await ctx.answerCallbackQuery({ text: "Неизвестное действие" });
+      }
+    } catch (err) {
+      logger.error({ err, data }, "Ошибка callback query");
+      await ctx.answerCallbackQuery({ text: "Ошибка" });
+    }
   });
 
   // === Photo → intake or OCR ===
@@ -358,12 +409,8 @@ export function registerHandlers(bot: Bot): void {
     try {
       const intakeResult = handleIntakeText(chatId, text, stores);
       if (intakeResult) {
-        const parts = splitMessage(intakeResult.message);
-        for (const part of parts) {
-          await ctx.reply(part);
-        }
+        await sendIntakeResponse(ctx, intakeResult);
 
-        // If finalized with transition, render files
         if (intakeResult.done && intakeResult.transition) {
           await renderAndSend(ctx, intakeResult.transition);
         }

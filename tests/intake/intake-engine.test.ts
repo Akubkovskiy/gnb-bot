@@ -18,6 +18,7 @@ import {
   handleReview,
   cancelIntake,
   hasActiveIntake,
+  _resetAllSessions,
 } from "../../src/intake/intake-engine.js";
 import { finalizeIntake } from "../../src/intake/finalize-intake.js";
 import { buildReviewText, buildIntakeResponse } from "../../src/intake/intake-response.js";
@@ -81,6 +82,7 @@ function seedCustomer(): void {
 }
 
 beforeEach(() => {
+  _resetAllSessions();
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "intake-engine-"));
   stores = {
     intakeDrafts: new IntakeDraftStore(tmpDir),
@@ -108,7 +110,7 @@ describe("/new_gnb start", () => {
     stores.intakeDrafts.create(CHAT_ID);
     const result = startIntake(CHAT_ID, stores);
     expect(result.message).toContain("незавершённый черновик");
-    expect(result.message).toContain("да");
+    expect(result.buttons).toBeDefined(); // buttons instead of text "да/нет"
   });
 });
 
@@ -164,7 +166,7 @@ describe("gnb number and base", () => {
     const result = handleIntakeText(CHAT_ID, "5-5", stores);
     expect(result).not.toBeNull();
     expect(result!.message).toContain("ЗП № 3");
-    expect(result!.message).toContain("основу");
+    expect(result!.buttons).toBeDefined(); // buttons: base_yes / base_no
   });
 
   it("no base found — goes to collecting", () => {
@@ -173,7 +175,7 @@ describe("gnb number and base", () => {
     handleIntakeText(CHAT_ID, "Новый объект", stores);
     const result = handleIntakeText(CHAT_ID, "1-1", stores);
     expect(result).not.toBeNull();
-    expect(result!.message).toContain("Присылайте данные");
+    expect(result!.message).toContain("без базы");
   });
 });
 
@@ -192,7 +194,6 @@ describe("base confirmation", () => {
     goToBaseConfirmation();
     const result = handleIntakeText(CHAT_ID, "да", stores);
     expect(result!.message).toContain("База");
-    expect(result!.message).toContain("унаследовано");
 
     // Draft should have inherited fields
     const draft = stores.intakeDrafts.getByChatId(CHAT_ID);

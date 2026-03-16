@@ -9,7 +9,7 @@
  * Text/PDF/photo/Excel in collecting state → intake pipeline.
  */
 
-import type { IntakeDraft, IntakeStores, IntakeResponse, ExtractedField } from "./intake-types.js";
+import type { IntakeDraft, IntakeStores, IntakeResponse, ExtractedField, InlineButton } from "./intake-types.js";
 import { findBaseTransition, applyBaseTransitionToDraft } from "./inheritance.js";
 import { extractFromText } from "./text-extractor.js";
 import { extractDocument, mapExtractionToFields, type ClaudeCaller } from "./doc-extractor.js";
@@ -17,6 +17,8 @@ import { buildReviewReport, summarizeBase } from "./review-builder.js";
 import { buildIntakeResponse, buildReviewText, buildConfirmBlockedText } from "./intake-response.js";
 import { finalizeIntake } from "./finalize-intake.js";
 import { parseGnbNumber } from "../domain/formatters.js";
+import { buildDocumentReview, formatDocumentReview } from "./document-review.js";
+import { getReusableBaseDocuments } from "./document-registry.js";
 
 // === Session state (in-memory, per chat) ===
 
@@ -28,6 +30,8 @@ export type IntakeState =
   | "awaiting_base_confirmation"
   | "collecting"
   | "awaiting_review_confirmation"
+  | "awaiting_name_confirmation"
+  | "awaiting_name_edit"
   | "resume_prompt";
 
 interface Session {
@@ -37,6 +41,10 @@ interface Session {
   object?: string;
   gnb_number?: string;
   baseTransitionId?: string;
+  /** Doc ID currently being named (for naming approval flow). */
+  pendingNamingDocId?: string;
+  /** Last service message ID (for edit-in-place). */
+  lastServiceMessageId?: number;
 }
 
 const sessions = new Map<number, Session>();
@@ -53,6 +61,11 @@ function clearSession(chatId: number): void {
   sessions.delete(chatId);
 }
 
+/** Reset all sessions (for testing). */
+export function _resetAllSessions(): void {
+  sessions.clear();
+}
+
 // === Public API ===
 
 /**
@@ -65,9 +78,14 @@ export function startIntake(chatId: number, stores: IntakeStores): IntakeRespons
     setSession(chatId, { state: "resume_prompt", draftId: existing.id });
     const fieldsCount = existing.fields.filter((f) => !f.conflict_with_existing).length;
     return {
-      message:
-        `У вас есть незавершённый черновик (${fieldsCount} полей собрано).\n\n` +
-        `Продолжить сбор данных? (да / нет / заново)`,
+      message: `У вас есть незавершённый черновик (${fieldsCount} полей собрано).`,
+      buttons: [
+        [
+          { text: "Продолжить", callback_data: "intake:resume" },
+          { text: "Заново", callback_data: "intake:discard" },
+          { text: "Отменить", callback_data: "intake:cancel" },
+        ],
+      ],
     };
   }
 
@@ -202,12 +220,31 @@ export function handleReview(chatId: number, stores: IntakeStores): IntakeRespon
     ? stores.transitions.get(draft.base_transition_id) ?? undefined
     : undefined;
   const report = buildReviewReport(draft, base);
+  const docReview = buildDocumentReview(draft, base);
+
+  // Build combined review text
+  let reviewText = buildReviewText(report);
+  reviewText += "\n\n" + formatDocumentReview(docReview);
 
   if (report.ready_for_confirmation) {
     setSession(chatId, { ...session, state: "awaiting_review_confirmation" });
+    return {
+      message: reviewText,
+      buttons: [
+        [
+          { text: "Подтвердить", callback_data: "intake:confirm" },
+          { text: "Вернуться к сбору", callback_data: "intake:back_collecting" },
+        ],
+      ],
+    };
   }
 
-  return { message: buildReviewText(report) };
+  return {
+    message: reviewText,
+    buttons: [
+      [{ text: "Вернуться к сбору", callback_data: "intake:back_collecting" }],
+    ],
+  };
 }
 
 /**
@@ -228,6 +265,82 @@ export function cancelIntake(chatId: number, stores: IntakeStores): IntakeRespon
 export function hasActiveIntake(chatId: number): boolean {
   const session = getSession(chatId);
   return session.state !== "idle";
+}
+
+/**
+ * Handle inline button callback.
+ */
+export function handleCallback(chatId: number, data: string, stores: IntakeStores): IntakeResponse | null {
+  const session = getSession(chatId);
+
+  switch (data) {
+    case "intake:resume":
+      return handleResumePrompt(chatId, "да", stores);
+    case "intake:discard":
+      return handleResumePrompt(chatId, "заново", stores);
+    case "intake:cancel":
+      return cancelIntake(chatId, stores);
+    case "intake:base_yes":
+      return handleBaseConfirmation(chatId, "да", stores);
+    case "intake:base_no":
+      return handleBaseConfirmation(chatId, "нет", stores);
+    case "intake:confirm":
+      return handleReviewConfirmation(chatId, "да", stores);
+    case "intake:back_collecting":
+      setSession(chatId, { ...session, state: "collecting" });
+      return { message: "Присылайте данные или /review_gnb." };
+    case "intake:review":
+      return handleReview(chatId, stores);
+    case "intake:show_base":
+      return handleShowBase(chatId, stores);
+    default:
+      return null;
+  }
+}
+
+/**
+ * Show what's available in the base transition ("что есть в базе").
+ */
+export function handleShowBase(chatId: number, stores: IntakeStores): IntakeResponse {
+  const session = getSession(chatId);
+  const draftId = session.draftId;
+  if (!draftId) return { message: "Нет активного черновика." };
+
+  const draft = stores.intakeDrafts.get(draftId);
+  if (!draft?.base_transition_id) {
+    return { message: "У текущего черновика нет базового ГНБ." };
+  }
+
+  const base = stores.transitions.get(draft.base_transition_id);
+  if (!base) return { message: "Базовый переход не найден." };
+
+  const reusable = getReusableBaseDocuments(base);
+  if (reusable.length === 0) {
+    return { message: "В базовом ГНБ нет документов для повторного использования." };
+  }
+
+  const lines: string[] = [`📦 Из ${base.gnb_number}:`];
+  for (const doc of reusable) {
+    lines.push(`  • ${doc.label}${doc.details ? ` (${doc.details})` : ""}`);
+  }
+  lines.push("\nЭти данные уже унаследованы в текущий черновик.");
+
+  return { message: lines.join("\n") };
+}
+
+/**
+ * Get intake menu buttons for collecting state.
+ */
+export function getCollectingMenu(): InlineButton[][] {
+  return [
+    [
+      { text: "Проверить ГНБ", callback_data: "intake:review" },
+      { text: "Что в базе", callback_data: "intake:show_base" },
+    ],
+    [
+      { text: "Отменить", callback_data: "intake:cancel" },
+    ],
+  ];
 }
 
 // === Internal handlers ===
@@ -331,8 +444,13 @@ function handleGnbNumberInput(chatId: number, input: string, stores: IntakeStore
       message:
         `Найден предыдущий ${base.gnb_number} на ${object}.\n` +
         `Подписанты:\n${sigList}\n` +
-        (baseSummary.pipe ? `Труба: ${baseSummary.pipe.mark}\n` : "") +
-        `\nИспользовать как основу? (да / нет)`,
+        (baseSummary.pipe ? `Труба: ${baseSummary.pipe.mark}` : ""),
+      buttons: [
+        [
+          { text: "Использовать как основу", callback_data: "intake:base_yes" },
+          { text: "С нуля", callback_data: "intake:base_no" },
+        ],
+      ],
     };
   }
 
@@ -340,14 +458,14 @@ function handleGnbNumberInput(chatId: number, input: string, stores: IntakeStore
   setSession(chatId, { ...session, state: "collecting", draftId, gnb_number: parsed.full });
   return {
     message:
-      `Черновик ${parsed.full} создан.\n` +
-      `Предыдущих переходов на ${object} не найдено.\n\n` +
-      `Присылайте данные:\n` +
-      `  • ИС PDF (исполнительная схема)\n` +
-      `  • Паспорта / сертификаты\n` +
-      `  • Даты, адрес, подписанты — текстом\n` +
-      `  • /review_gnb — сводка\n` +
-      `  • /cancel — отменить`,
+      `Черновик ${parsed.full} создан (без базы).\n` +
+      `Присылайте: ИС PDF, паспорта, даты, подписанты.`,
+    buttons: [
+      [
+        { text: "Проверить ГНБ", callback_data: "intake:review" },
+        { text: "Отменить", callback_data: "intake:cancel" },
+      ],
+    ],
   };
 }
 
@@ -364,14 +482,9 @@ function handleBaseConfirmation(chatId: number, input: string, stores: IntakeSto
       setSession(chatId, { ...session, state: "collecting" });
       return {
         message:
-          `✅ База из ${base.gnb_number} применена (${inherited.length} полей унаследовано).\n\n` +
-          `Присылайте данные по новому ГНБ:\n` +
-          `  • ИС PDF (обязательно — геометрия, адрес)\n` +
-          `  • Даты работ\n` +
-          `  • Подписанты, если изменились\n` +
-          `  • Паспорта/сертификаты, если новые\n` +
-          `  • /review_gnb — сводка\n` +
-          `  • /cancel — отменить`,
+          `✅ База из ${base.gnb_number} применена (${inherited.length} полей).\n` +
+          `Присылайте: ИС PDF, даты, подписанты, паспорта.`,
+        buttons: getCollectingMenu(),
       };
     }
   }
@@ -379,16 +492,20 @@ function handleBaseConfirmation(chatId: number, input: string, stores: IntakeSto
   if (lower === "нет" || lower === "с нуля") {
     setSession(chatId, { ...session, state: "collecting" });
     return {
-      message:
-        `Черновик ${session.gnb_number} без базы.\n\n` +
-        `Присылайте все данные:\n` +
-        `  • ИС PDF, паспорта, сертификаты\n` +
-        `  • Даты, адрес, подписанты — текстом\n` +
-        `  • /review_gnb — сводка`,
+      message: `Черновик ${session.gnb_number} без базы.\nПрисылайте: ИС PDF, паспорта, даты, подписанты.`,
+      buttons: getCollectingMenu(),
     };
   }
 
-  return { message: "Использовать предыдущий ГНБ как основу? (да / нет)" };
+  return {
+    message: "Использовать предыдущий ГНБ как основу?",
+    buttons: [
+      [
+        { text: "Да", callback_data: "intake:base_yes" },
+        { text: "Нет", callback_data: "intake:base_no" },
+      ],
+    ],
+  };
 }
 
 function handleCollectingText(chatId: number, input: string, stores: IntakeStores): IntakeResponse {

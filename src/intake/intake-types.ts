@@ -142,11 +142,21 @@ export const DESIRED_FIELDS: FieldName[] = [
 
 // === Intake response ===
 
+/** Button row for inline keyboard. */
+export interface InlineButton {
+  text: string;
+  callback_data: string;
+}
+
 export interface IntakeResponse {
   message: string;
   done?: boolean;
   /** Set when finalization succeeds — handler uses this to trigger rendering. */
   transition?: Transition;
+  /** Inline keyboard buttons (rows of buttons). */
+  buttons?: InlineButton[][];
+  /** If true, handler should edit previous service message instead of sending new one. */
+  edit_previous?: boolean;
 }
 
 // === Stores bundle for intake ===
