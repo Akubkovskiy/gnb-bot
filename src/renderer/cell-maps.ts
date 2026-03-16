@@ -92,6 +92,7 @@ export const AOSR1_CELLS = {
   sign1_name: "A73",
   sign2_name: "A76",
   sign2_control_name: "A80", // строительный контроль name
+  designer_name: "A83", // представитель проектной организации
   sign3_name: "A86",
 } as const;
 
@@ -108,6 +109,7 @@ export const AOSR2_CELLS = {
   sign1_name: "A72",
   sign2_name: "A75",
   sign2_control_name: "A79",
+  designer_name: "A82", // представитель проектной организации
   sign3_name: "A85",
 } as const;
 

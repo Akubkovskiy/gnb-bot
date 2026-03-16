@@ -116,6 +116,7 @@ export async function renderAosr(
   write(aosr1, AOSR1_CELLS.sign1_name, sign1_customer.full_name);
   write(aosr1, AOSR1_CELLS.sign2_name, sign2_contractor.full_name);
   write(aosr1, AOSR1_CELLS.sign2_control_name, sign2_contractor.full_name);
+  write(aosr1, AOSR1_CELLS.designer_name, " "); // designer representative (not tracked separately yet)
   write(aosr1, AOSR1_CELLS.sign3_name, sign3_optional?.full_name ?? " ");
 
   // === АОСР(2) — hardcoded cells ===
@@ -140,6 +141,7 @@ export async function renderAosr(
   write(aosr2, AOSR2_CELLS.sign1_name, sign1_customer.full_name);
   write(aosr2, AOSR2_CELLS.sign2_name, sign2_contractor.full_name);
   write(aosr2, AOSR2_CELLS.sign2_control_name, sign2_contractor.full_name);
+  write(aosr2, AOSR2_CELLS.designer_name, " "); // designer representative (not tracked separately yet)
   write(aosr2, AOSR2_CELLS.sign3_name, sign3_optional?.full_name ?? " ");
 
   // Write output
