@@ -45,6 +45,11 @@ function makeValidTransition(): Partial<Transition> {
         aosr_full_line: "",
       },
     },
+    organizations: {
+      customer: { id: "oek", name: "АО «ОЭК»", ogrn: "", inn: "", legal_address: "", phone: "", sro_name: "" },
+      contractor: { id: "oek-st", name: "АНО «ОЭК Стройтрест»", ogrn: "", inn: "", legal_address: "", phone: "", sro_name: "" },
+      designer: { id: "sis", name: "ООО «СПЕЦИНЖСТРОЙ»", ogrn: "", inn: "", legal_address: "", phone: "", sro_name: "" },
+    },
     gnb_params: { profile_length: 194.67, pipe_count: 2 },
     pipe: { mark: "Труба ЭЛЕКТРОПАЙП 225", diameter: "d=225", diameter_mm: 225 },
     project_number: "04-ОЭКСТ-КС-25-ТКР.1",
@@ -154,7 +159,7 @@ describe("validateTransition", () => {
   it("reports multiple blockers at once", () => {
     const report = validateTransition({}); // empty transition
     expect(report.valid).toBe(false);
-    expect(getBlockers(report).length).toBeGreaterThanOrEqual(7);
+    expect(getBlockers(report).length).toBeGreaterThanOrEqual(8);
   });
 });
 

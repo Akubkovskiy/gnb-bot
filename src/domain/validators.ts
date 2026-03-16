@@ -58,6 +58,11 @@ export function validateTransition(t: Partial<Transition>): ValidationReport {
     issues.push({ level: "BLOCK", field: "profile_length", message: "L профиль не указан" });
   }
 
+  // 8. organizations (required for rendering)
+  if (!t.organizations?.customer || !t.organizations?.contractor) {
+    issues.push({ level: "BLOCK", field: "organizations", message: "Организации не указаны (нужны для актов)" });
+  }
+
   // === WARN: important but not blocking ===
 
   // 8. pipe info
