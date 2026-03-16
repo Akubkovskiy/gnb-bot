@@ -37,53 +37,39 @@ const DOC_CLASS_LABELS: Partial<Record<DocClass, string>> = {
 };
 
 export function buildIntakeResponse(input: IntakeResponseInput): string {
-  const lines: string[] = [];
-
-  // Header
   const label = DOC_CLASS_LABELS[input.docClass] ?? input.docClass;
-  if (input.fileName) {
-    lines.push(`📎 ${label}: ${input.fileName}`);
-  } else {
-    lines.push(`📎 ${label}`);
-  }
-
-  // Extraction stats
-  lines.push(`Извлечено: ${input.fieldsExtracted}, обновлено: ${input.fieldsUpdated}`);
-  if (input.conflictsFound > 0) {
-    lines.push(`⚠️ Конфликтов: ${input.conflictsFound}`);
-  }
-
-  // Warnings
-  for (const w of input.warnings.slice(0, 3)) {
-    lines.push(`  ⚠ ${w}`);
-  }
-
-  // Draft status
-  const activeFields = input.draft.fields.filter((f) => !f.conflict_with_existing).length;
   const requiredPresent = REQUIRED_FIELDS.filter((r) =>
     input.draft.fields.some((f) => f.field_name === r && !f.conflict_with_existing),
   ).length;
   const requiredTotal = REQUIRED_FIELDS.length;
 
-  lines.push("");
-  lines.push(`Паспорт ГНБ: ${requiredPresent}/${requiredTotal} обязательных полей`);
+  // Line 1: what was received + stats
+  const fileName = input.fileName ? ` ${input.fileName}` : "";
+  let line1 = `📎 ${label}${fileName} (${input.fieldsExtracted}→${input.fieldsUpdated})`;
+  if (input.conflictsFound > 0) line1 += ` ⚠${input.conflictsFound}`;
 
-  // Scheme reminder
-  if (!hasExecutiveSchemeSource(input.draft)) {
-    lines.push("📌 ИС PDF ещё не прислана (нужна для геометрии)");
+  // Line 2: progress bar
+  const line2 = `${requiredPresent}/${requiredTotal} обяз.`;
+
+  // Line 3: warnings/missing (compact)
+  const parts: string[] = [line1, line2];
+
+  if (input.warnings.length > 0) {
+    parts.push(`⚠ ${input.warnings[0]}`);
   }
 
-  // Missing critical
+  if (!hasExecutiveSchemeSource(input.draft)) {
+    parts.push("📌 нет ИС PDF");
+  }
+
   const missingCritical = REQUIRED_FIELDS.filter(
     (r) => !input.draft.fields.some((f) => f.field_name === r && !f.conflict_with_existing),
   );
-  if (missingCritical.length > 0 && missingCritical.length <= 5) {
-    lines.push(`Не хватает: ${missingCritical.join(", ")}`);
+  if (missingCritical.length > 0 && missingCritical.length <= 4) {
+    parts.push(`нет: ${missingCritical.join(", ")}`);
   }
 
-  lines.push("\n/review_gnb — полная сводка");
-
-  return lines.join("\n");
+  return parts.join("\n");
 }
 
 // === Review text ===
