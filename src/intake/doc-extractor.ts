@@ -47,7 +47,7 @@ export async function extractDocument(
   // Step 2: detect material subtype from filename
   materialSubtype = detectMaterialSubtype(filename);
 
-  // Step 3: build extraction prompt
+  // Step 3: build extraction prompt (may be generic if filename is unclear)
   const prompt = buildExtractionPrompt(docClass, filePath, materialSubtype);
 
   // Step 4: call Claude
@@ -69,10 +69,12 @@ export async function extractDocument(
   }
 
   // Step 5: refine classification from text if filename was uncertain
+  let reclassified = false;
   if (fileClass.confidence === "low") {
     const textClass = classifyText(rawResponse);
-    if (textClass.confidence !== "low") {
+    if (textClass.confidence !== "low" && textClass.doc_class !== docClass) {
       docClass = textClass.doc_class;
+      reclassified = true;
     }
   }
 
@@ -81,7 +83,18 @@ export async function extractDocument(
     materialSubtype = detectMaterialSubtypeFromText(rawResponse);
   }
 
-  // Step 7: normalize
+  // Step 7: if reclassified to a specific type, re-extract with targeted prompt
+  // This ensures executive_scheme/passport_pipe/etc get proper field extraction
+  if (reclassified && docClass !== "unknown") {
+    const refinedPrompt = buildExtractionPrompt(docClass, filePath, materialSubtype);
+    try {
+      rawResponse = await callClaude(refinedPrompt, { files: [filePath] });
+    } catch {
+      // Fall through with original response — better than nothing
+    }
+  }
+
+  // Step 8: normalize
   return normalizeExtraction(rawResponse, docClass, sourceType, materialSubtype);
 }
 
@@ -437,7 +450,8 @@ const FIELD_MAPPING: Partial<Record<DocClass, Record<string, FieldMapEntry>>> = 
     КОНФИГУРАЦИЯ: { fieldName: "gnb_params.configuration" },
   },
   passport_pipe: {
-    МАРКА_ТРУБЫ: { fieldName: "pipe", transform: (v) => ({ mark: String(v), diameter: "", diameter_mm: 0 }) },
+    МАРКА_ТРУБЫ: { fieldName: "pipe", transform: (v) => ({ _merge: true, mark: String(v) }) },
+    ДИАМЕТР: { fieldName: "pipe", transform: (v) => ({ _merge: true, diameter: `d=${v}`, diameter_mm: typeof v === "number" ? v : parseInt(String(v), 10) || 0 }) },
   },
   order: {
     // Order fields map to signatory data, but we can't know which role without context.
@@ -454,7 +468,7 @@ const FIELD_MAPPING: Partial<Record<DocClass, Record<string, FieldMapEntry>>> = 
     ШИФР_ПРОЕКТА: { fieldName: "project_number" },
     L_ПЛАН: { fieldName: "gnb_params.plan_length" },
     L_ПРОФИЛЬ: { fieldName: "gnb_params.profile_length" },
-    МАРКА_ТРУБЫ: { fieldName: "pipe", transform: (v) => ({ mark: String(v), diameter: "", diameter_mm: 0 }) },
+    МАРКА_ТРУБЫ: { fieldName: "pipe", transform: (v) => ({ _merge: true, mark: String(v) }) },
   },
   prior_aosr: {
     НОМЕР_ГНБ: { fieldName: "gnb_number" },

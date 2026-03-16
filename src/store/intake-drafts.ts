@@ -320,7 +320,15 @@ export class IntakeDraftStore {
         break;
 
       // Pipe / materials
-      case "pipe": d.pipe = v as any; break;
+      case "pipe":
+        if (v && typeof v === "object" && (v as any)._merge) {
+          // Merge mode: only update provided fields, preserve existing
+          const { _merge, ...updates } = v as any;
+          d.pipe = { ...(d.pipe || { mark: "", diameter: "", diameter_mm: 0 }), ...updates };
+        } else {
+          d.pipe = v as any;
+        }
+        break;
       case "materials": d.materials = v as any; break;
 
       // GNB params (nested)

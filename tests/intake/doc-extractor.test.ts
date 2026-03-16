@@ -253,13 +253,25 @@ describe("mapExtractionToFields", () => {
     expect(fields.find((f) => f.field_name === "customer")?.value).toContain("ОЭК");
   });
 
-  it("maps passport pipe to pipe field", () => {
+  it("maps passport pipe mark with _merge flag", () => {
     const extraction = normalizeExtraction(MOCK_PASSPORT_PIPE, "passport_pipe", "pdf");
     const fields = mapExtractionToFields(extraction, "src-2");
 
-    const pipe = fields.find((f) => f.field_name === "pipe");
-    expect(pipe).toBeDefined();
-    expect((pipe?.value as any).mark).toContain("ЭЛЕКТРОПАЙП");
+    const pipeFields = fields.filter((f) => f.field_name === "pipe");
+    expect(pipeFields.length).toBeGreaterThanOrEqual(1);
+
+    // Mark field has _merge flag — won't overwrite existing pipe data
+    const markField = pipeFields.find((f) => (f.value as any).mark);
+    expect(markField).toBeDefined();
+    expect((markField?.value as any)._merge).toBe(true);
+    expect((markField?.value as any).mark).toContain("ЭЛЕКТРОПАЙП");
+
+    // Diameter field also has _merge
+    const diamField = pipeFields.find((f) => (f.value as any).diameter_mm);
+    if (diamField) {
+      expect((diamField.value as any)._merge).toBe(true);
+      expect((diamField.value as any).diameter_mm).toBe(225);
+    }
   });
 
   it("maps prior act fields", () => {
@@ -366,5 +378,31 @@ describe("extractDocument (full pipeline with mock)", () => {
     const result = await extractDocument("/tmp/Бентонит паспорт.pdf", mockClaude);
 
     expect(result.material_subtype).toBe("bentonite");
+  });
+
+  it("re-extracts with targeted prompt after reclassification", async () => {
+    let callCount = 0;
+    const mockClaude = async (prompt: string) => {
+      callCount++;
+      if (callCount === 1) {
+        // First call: generic prompt returns scheme-like content
+        return "Исполнительная схема профиль перехода\nНОМЕР_ГНБ: ЗП № 7-7\nL_ПРОФИЛЬ: 100.5";
+      }
+      // Second call: targeted prompt returns full extraction
+      return MOCK_EXECUTIVE_SCHEME;
+    };
+    const result = await extractDocument("/tmp/scan_001.pdf", mockClaude);
+
+    expect(callCount).toBe(2); // generic → reclassify → re-extract
+    expect(result.doc_class).toBe("executive_scheme");
+    expect(result.fields.length).toBeGreaterThan(3);
+  });
+
+  it("does NOT re-extract when filename classification is high confidence", async () => {
+    let callCount = 0;
+    const mockClaude = async () => { callCount++; return MOCK_PASSPORT_PIPE; };
+    await extractDocument("/tmp/Паспорт качества №13043.pdf", mockClaude);
+
+    expect(callCount).toBe(1); // only one call — no re-extraction
   });
 });

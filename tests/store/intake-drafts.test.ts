@@ -212,6 +212,33 @@ describe("Field extraction", () => {
     expect(loaded.data.gnb_params?.plan_length).toBe(190.22);
   });
 
+  it("setField merges pipe with _merge flag (does not overwrite)", () => {
+    const draft = store.create(1);
+    // First: pipe from prior_act
+    store.setField(draft.id, makeField("pipe", { mark: "ЭЛЕКТРОПАЙП 225/170", diameter: "d=225", diameter_mm: 225, quality_passport: "№13043" }, { source_type: "prior_act", source_id: "s1" }));
+    // Second: passport extraction with _merge — higher priority (pdf=4 > prior_act... no, prior_act=3 < pdf=4)
+    // Use manual_text override to ensure the merge gets applied
+    store.setField(draft.id, makeField("pipe", { _merge: true, mark: "ЭЛЕКТРОПАЙП 225/170-N 1250" }, { source_type: "manual_text", source_id: "s2" }));
+
+    const loaded = store.get(draft.id)!;
+    // Mark updated, but diameter and quality_passport preserved
+    expect(loaded.data.pipe?.mark).toBe("ЭЛЕКТРОПАЙП 225/170-N 1250");
+    expect(loaded.data.pipe?.diameter).toBe("d=225");
+    expect(loaded.data.pipe?.diameter_mm).toBe(225);
+    expect((loaded.data.pipe as any)?.quality_passport).toBe("№13043");
+  });
+
+  it("setField sets full pipe without _merge flag", () => {
+    const draft = store.create(1);
+    store.setField(draft.id, makeField("pipe", { mark: "Old", diameter: "d=160", diameter_mm: 160 }));
+    store.setField(draft.id, makeField("pipe", { mark: "New", diameter: "d=225", diameter_mm: 225 }, { source_type: "manual_text", source_id: "s2" }));
+
+    const loaded = store.get(draft.id)!;
+    // Full overwrite — no _merge flag
+    expect(loaded.data.pipe?.mark).toBe("New");
+    expect(loaded.data.pipe?.diameter_mm).toBe(225);
+  });
+
   it("setField syncs date fields", () => {
     const draft = store.create(1);
     const date = { day: 10, month: "декабря", year: 2025 };
