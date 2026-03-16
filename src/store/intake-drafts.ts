@@ -98,6 +98,14 @@ export class IntakeDraftStore {
     writeJson(this.filePath(id), draft);
   }
 
+  setBaseTransitionId(id: string, baseId: string): void {
+    const draft = this.get(id);
+    if (!draft) throw new Error(`IntakeDraft ${id} not found`);
+    draft.base_transition_id = baseId;
+    draft.updated_at = new Date().toISOString();
+    writeJson(this.filePath(id), draft);
+  }
+
   // === Source documents ===
 
   addSource(id: string, source: SourceDocument): void {
