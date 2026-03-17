@@ -200,8 +200,8 @@ Done:
 Human gate:
 - [x] owner reviewed — approved to proceed to Phase 2
 
-## Phase 2 - SQLite Foundation + Seed / Migration Bridge
-Estimate: 2-3 days
+## Phase 2 - SQLite Foundation + Seed / Migration Bridge ✅
+Estimate: 2-3 days | **Completed: 2026-03-17**
 
 Goal:
 - create the DB layer and first migration bridge without breaking current bot runtime
@@ -247,8 +247,8 @@ Done when:
 Human gate:
 - [ ] owner reviews DB foundation after green tests only
 
-## Phase 3 - Retrieval Layer
-Estimate: 2-3 days
+## Phase 3 - Retrieval Layer ✅
+Estimate: 2-3 days | **Completed: 2026-03-17**
 
 Goal:
 - make the DB useful through typed queries
@@ -277,8 +277,8 @@ Done when:
 Human gate:
 - [ ] owner can review retrieval examples against real data
 
-## Phase 4 - Reasoning Layer + Runtime Skills
-Estimate: 2-3 days
+## Phase 4 - Reasoning Layer + Runtime Skills ✅
+Estimate: 2-3 days | **Completed: 2026-03-17**
 
 Goal:
 - make Claude reason over retrieval context and return structured updates
@@ -314,8 +314,8 @@ Human gate:
   - [ ] "the site manager from SPECINZH is Shcheglov"
   - [ ] "there is no Stroytrest"
 
-## Phase 5 - Replace Regex-Heavy Text Path
-Estimate: 1 day
+## Phase 5 - Replace Regex-Heavy Text Path ✅
+Estimate: 1 day | **Completed: 2026-03-17**
 
 Goal:
 - move free-text intake from parser-first to reasoning-first
