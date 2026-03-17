@@ -150,8 +150,18 @@ export async function processTextWithReasoning(
 
           for (const signatoryUpdate of reasoningOutput.signatoryUpdates) {
             if (signatoryUpdate.action === "assign") {
-              const person = repos.people.getById(signatoryUpdate.personId);
-              if (!person) continue;
+              // Try exact ID first, then fuzzy name search
+              let person = repos.people.getById(signatoryUpdate.personId);
+              if (!person) {
+                // Claude may return surname or full name instead of DB id
+                const candidates = repos.people.findBySurname(signatoryUpdate.personId)
+                  || repos.people.findByName(signatoryUpdate.personId);
+                if (candidates.length > 0) person = candidates[0];
+              }
+              if (!person) {
+                logger.warn({ personId: signatoryUpdate.personId, role: signatoryUpdate.role }, "Person not found in DB for signatory assignment");
+                continue;
+              }
 
               const org = person.org_id ? repos.orgs.getById(person.org_id) : undefined;
               const docs = repos.personDocs.getCurrentByPersonId(signatoryUpdate.personId);
@@ -289,14 +299,26 @@ export async function processTextWithReasoning(
 }
 
 function roleToFieldName(role: string): FieldName | null {
-  switch (role) {
+  const r = role.toLowerCase().trim();
+  switch (r) {
     case "sign1":
+    case "sign1_customer":
+    case "мастер":
+    case "мастер рэс":
       return "signatories.sign1_customer";
     case "sign2":
+    case "sign2_contractor":
+    case "подрядчик":
       return "signatories.sign2_contractor";
     case "sign3":
+    case "sign3_optional":
+    case "sign3_subcontractor":
+    case "субподрядчик":
       return "signatories.sign3_optional";
     case "tech":
+    case "tech_supervisor":
+    case "технадзор":
+    case "тн":
       return "signatories.tech_supervisor";
     default:
       return null;
