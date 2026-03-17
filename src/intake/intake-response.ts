@@ -62,6 +62,9 @@ export function buildIntakeResponse(input: IntakeResponseInput): string {
     if (input.updatedFields.length > 6) {
       parts.push(`  ...и ещё ${input.updatedFields.length - 6}`);
     }
+  } else if (input.fieldsExtracted > 0 && input.fieldsUpdated === 0) {
+    // Extracted but nothing new — all already present or conflicting
+    parts.push(`Распознано ${input.fieldsExtracted} полей — все уже есть или совпадают`);
   } else if (input.fieldsExtracted > 0) {
     parts.push(`Обновлено: ${input.fieldsUpdated} из ${input.fieldsExtracted}`);
   } else {

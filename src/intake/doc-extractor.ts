@@ -68,9 +68,13 @@ export async function extractDocument(
     };
   }
 
-  // Step 5: refine classification from text if filename was uncertain
+  // Step 5: refine classification from text if filename was uncertain or generic
+  // Photos and unknown always need text-based refinement
   let reclassified = false;
-  if (fileClass.confidence === "low") {
+  const needsRefinement = fileClass.confidence === "low"
+    || docClass === "photo_of_doc"
+    || docClass === "unknown";
+  if (needsRefinement) {
     const textClass = classifyText(rawResponse);
     if (textClass.confidence !== "low" && textClass.doc_class !== docClass) {
       docClass = textClass.doc_class;
