@@ -86,12 +86,13 @@ export async function askClaude(prompt: string, options: AskClaudeOptions = {}):
   }
 
   // Передача файлов — добавляем директорию с файлами через --add-dir
-  // и упоминаем файлы в промпте
+  // и разрешаем Read/Bash для чтения PDF/image
   if (files?.length) {
     const dirs = new Set(files.map((f) => path.dirname(f)));
     for (const dir of dirs) {
       args.push("--add-dir", dir);
     }
+    args.push("--allowedTools", "Read,Bash");
   }
 
   logger.debug({ exe, args: args.filter((a) => a !== prompt) }, "Запуск Claude CLI");

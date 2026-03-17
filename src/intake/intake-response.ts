@@ -23,6 +23,8 @@ export interface IntakeResponseInput {
   base?: Transition;
   /** Updated field names + values for owner-facing display. */
   updatedFields?: Array<{ name: FieldName; value: unknown }>;
+  /** Conflicting field names for owner-facing display. */
+  conflictFields?: Array<{ name: FieldName; currentValue: unknown; candidateValue: unknown }>;
 }
 
 const DOC_CLASS_LABELS: Partial<Record<DocClass, string>> = {
@@ -52,7 +54,7 @@ export function buildIntakeResponse(input: IntakeResponseInput): string {
   const fileName = input.fileName ? `: ${input.fileName}` : "";
   parts.push(`📎 ${label}${fileName}`);
 
-  // Line 2: what was updated — show actual fields
+  // Show actual updated fields
   if (input.updatedFields && input.updatedFields.length > 0) {
     for (const f of input.updatedFields.slice(0, 6)) {
       parts.push(`  ${getFieldLabel(f.name)}: ${formatValue(f.value)}`);
@@ -66,34 +68,51 @@ export function buildIntakeResponse(input: IntakeResponseInput): string {
     parts.push("Не удалось извлечь структурированные данные");
   }
 
-  // Warnings
+  // Warnings inline
   if (input.warnings.length > 0) {
     parts.push(`  ⚠ ${input.warnings[0]}`);
   }
-  if (input.conflictsFound > 0) {
+  if (input.conflictFields && input.conflictFields.length > 0) {
+    parts.push(`⚠ Конфликты (${input.conflictFields.length}):`);
+    for (const c of input.conflictFields.slice(0, 5)) {
+      parts.push(`  • ${getFieldLabel(c.name)}: было "${formatValue(c.currentValue)}" → новое "${formatValue(c.candidateValue)}"`);
+    }
+    if (input.conflictFields.length > 5) {
+      parts.push(`  ...и ещё ${input.conflictFields.length - 5}`);
+    }
+  } else if (input.conflictsFound > 0) {
     parts.push(`  ⚠ Конфликтов: ${input.conflictsFound}`);
   }
 
-  // Progress
-  parts.push(`\nПаспорт ГНБ: ${requiredPresent}/${requiredTotal} обязательных полей`);
-
-  // Scheme reminder
-  if (!hasExecutiveSchemeSource(input.draft)) {
-    parts.push("📌 ИС PDF ещё не прислана (нужна для геометрии)");
-  }
-
-  // Missing critical fields — Russian labels
-  const missingCritical = REQUIRED_FIELDS.filter(
-    (r) => !input.draft.fields.some((f) => f.field_name === r && !f.conflict_with_existing),
-  );
-  if (missingCritical.length > 0 && missingCritical.length <= 5) {
-    const labels = missingCritical.map((f) => getFieldLabel(f as FieldName));
-    parts.push(`Не хватает: ${labels.join(", ")}`);
-  }
-
-  parts.push("\n/review_gnb — полная сводка");
+  // Compact progress line
+  parts.push(`\n✅ ${requiredPresent}/${requiredTotal} обязательных полей`);
 
   return parts.join("\n");
+}
+
+/**
+ * Build missing fields text (for "Не хватает" button callback).
+ */
+export function buildMissingFieldsText(draft: IntakeDraft): string {
+  const lines: string[] = [];
+  const missingRequired = REQUIRED_FIELDS.filter(
+    (r) => !draft.fields.some((f) => f.field_name === r && !f.conflict_with_existing),
+  );
+
+  if (missingRequired.length === 0) {
+    lines.push("✅ Все обязательные поля заполнены.");
+  } else {
+    lines.push("❌ Не хватает:");
+    for (const f of missingRequired) {
+      lines.push(`  • ${getFieldLabel(f as FieldName)}`);
+    }
+  }
+
+  if (!hasExecutiveSchemeSource(draft)) {
+    lines.push("\n📌 ИС PDF ещё не прислана (нужна для геометрии)");
+  }
+
+  return lines.join("\n");
 }
 
 // === Review text ===

@@ -119,9 +119,10 @@ export function extractFromText(text: string, sourceId: string): ExtractionResul
   }
 
   // === Title line (object name / project description) ===
-  const titleMatch = remaining.match(/(?:объект|наименование|строительство)[:\s]*(["«]?.{10,120}?["»]?(?:\.|$))/i);
+  // Greedy capture: take everything after "Объект:" up to end of line, stripping quotes
+  const titleMatch = remaining.match(/^(?:объект|наименование|строительство)\s*[:—]\s*(.{10,}?)$/im);
   if (titleMatch) {
-    const title = titleMatch[1].replace(/^["«]\s*/, "").replace(/\s*["»]$/, "").trim();
+    const title = titleMatch[1].replace(/^["«]+\s*/, "").replace(/\s*["»]+$/, "").trim();
     if (title.length > 10) {
       fields.push(makeField("title_line", title, sourceId, "medium", "наименование — проверить"));
       remaining = remaining.replace(titleMatch[0], " ");

@@ -10,11 +10,12 @@
  */
 
 import type { IntakeDraft, IntakeStores, IntakeResponse, ExtractedField, InlineButton } from "./intake-types.js";
+import { REQUIRED_FIELDS } from "./intake-types.js";
 import { findBaseTransition, applyBaseTransitionToDraft } from "./inheritance.js";
 import { extractFromText } from "./text-extractor.js";
 import { extractDocument, mapExtractionToFields, type ClaudeCaller } from "./doc-extractor.js";
 import { buildReviewReport, summarizeBase } from "./review-builder.js";
-import { buildIntakeResponse, buildReviewText, buildConfirmBlockedText } from "./intake-response.js";
+import { buildIntakeResponse, buildReviewText, buildConfirmBlockedText, buildMissingFieldsText } from "./intake-response.js";
 import { finalizeIntake } from "./finalize-intake.js";
 import { parseGnbNumber } from "../domain/formatters.js";
 import { buildDocumentReview, formatDocumentReview } from "./document-review.js";
@@ -181,13 +182,24 @@ export async function handleIntakeDocument(
   let updated = 0;
   let conflicts = 0;
   const updatedDocFields: Array<{ name: any; value: unknown }> = [];
+  const conflictDocFields: Array<{ name: any; currentValue: unknown; candidateValue: unknown }> = [];
   for (const field of mappedFields) {
+    // Get current value before setField to show in conflict
+    const currentDraft = stores.intakeDrafts.get(draft.id);
+    const existingField = currentDraft?.fields.find((f) => f.field_name === field.field_name && !f.conflict_with_existing);
     const res = stores.intakeDrafts.setField(draft.id, field);
     if (res.updated) {
       updated++;
       updatedDocFields.push({ name: field.field_name, value: field.value });
     }
-    if (res.conflict) conflicts++;
+    if (res.conflict) {
+      conflicts++;
+      conflictDocFields.push({
+        name: field.field_name,
+        currentValue: existingField?.value,
+        candidateValue: field.value,
+      });
+    }
   }
 
   // Build response
@@ -206,6 +218,7 @@ export async function handleIntakeDocument(
     draft: freshDraft,
     base,
     updatedFields: updatedDocFields,
+    conflictFields: conflictDocFields,
   });
 
   // Offer naming proposal for non-trivial documents
@@ -237,7 +250,10 @@ export async function handleIntakeDocument(
     }
   }
 
-  return { message: responseMsg };
+  return {
+    message: responseMsg,
+    buttons: buildIntakeButtons(freshDraft),
+  };
 }
 
 /**
@@ -333,6 +349,8 @@ export function handleCallback(chatId: number, data: string, stores: IntakeStore
       return handleReview(chatId, stores);
     case "intake:show_base":
       return handleShowBase(chatId, stores);
+    case "intake:missing":
+      return handleMissing(chatId, stores);
     case "intake:name_approve":
       return handleNameApprove(chatId, stores);
     case "intake:name_edit":
@@ -601,13 +619,23 @@ function handleCollectingText(chatId: number, input: string, stores: IntakeStore
   let updated = 0;
   let conflicts = 0;
   const updatedFields: Array<{ name: any; value: unknown }> = [];
+  const conflictFields: Array<{ name: any; currentValue: unknown; candidateValue: unknown }> = [];
   for (const field of extraction.fields) {
+    const currentDraft = stores.intakeDrafts.get(draftId);
+    const existingField = currentDraft?.fields.find((f) => f.field_name === field.field_name && !f.conflict_with_existing);
     const res = stores.intakeDrafts.setField(draftId, field);
     if (res.updated) {
       updated++;
       updatedFields.push({ name: field.field_name, value: field.value });
     }
-    if (res.conflict) conflicts++;
+    if (res.conflict) {
+      conflicts++;
+      conflictFields.push({
+        name: field.field_name,
+        currentValue: existingField?.value,
+        candidateValue: field.value,
+      });
+    }
   }
 
   if (extraction.fields.length === 0) {
@@ -636,7 +664,9 @@ function handleCollectingText(chatId: number, input: string, stores: IntakeStore
       draft: freshDraft,
       base,
       updatedFields,
+      conflictFields,
     }),
+    buttons: buildIntakeButtons(freshDraft),
   };
 }
 
@@ -691,6 +721,40 @@ function confirmAndFinalize(chatId: number, stores: IntakeStores): IntakeRespons
       `✅ Переход ${result.transition!.gnb_number} сохранён.\nID: ${result.transition!.id}`,
     done: true,
     transition: result.transition!,
+  };
+}
+
+// === Intake response buttons ===
+
+function buildIntakeButtons(draft: IntakeDraft): InlineButton[][] {
+  const missingRequired = REQUIRED_FIELDS.filter(
+    (r: any) => !draft.fields.some((f) => f.field_name === r && !f.conflict_with_existing),
+  );
+
+  const buttons: InlineButton[][] = [];
+  const row1: InlineButton[] = [];
+  if (missingRequired.length > 0) {
+    row1.push({ text: `Не хватает (${missingRequired.length})`, callback_data: "intake:missing" });
+  }
+  row1.push({ text: "Сводка", callback_data: "intake:review" });
+  buttons.push(row1);
+
+  return buttons;
+}
+
+// === Missing fields handler ===
+
+function handleMissing(chatId: number, stores: IntakeStores): IntakeResponse {
+  const session = getSession(chatId);
+  const draftId = session.draftId;
+  if (!draftId) return { message: "Нет активного черновика." };
+
+  const draft = stores.intakeDrafts.get(draftId);
+  if (!draft) return { message: "Черновик не найден." };
+
+  return {
+    message: buildMissingFieldsText(draft),
+    buttons: [[{ text: "Назад", callback_data: "intake:back_collecting" }]],
   };
 }
 
