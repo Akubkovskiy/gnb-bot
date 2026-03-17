@@ -4,6 +4,9 @@ import { logger } from "./logger.js";
 import { authMiddleware } from "./telegram/middleware.js";
 import { registerHandlers } from "./telegram/handlers.js";
 import { initMemory } from "./memory/init.js";
+import { getDb } from "./db/client.js";
+import { seedFromJson } from "./db/seed.js";
+import { getMemoryDir } from "./utils/paths.js";
 
 async function main() {
   logger.info("=== GNB Docs Bot запускается ===");
@@ -13,8 +16,18 @@ async function main() {
     process.exit(1);
   }
 
-  // Инициализация базы знаний
+  // Инициализация JSON-based памяти (backward compat)
   initMemory();
+
+  // Инициализация SQLite knowledge base
+  try {
+    const memDir = getMemoryDir();
+    getDb(memDir); // creates DB + tables
+    const stats = seedFromJson(memDir); // seed from existing JSON stores
+    logger.info({ stats, dbPath: memDir + "/gnb.db" }, "SQLite knowledge base инициализирована");
+  } catch (err) {
+    logger.warn({ err }, "SQLite init failed — continuing without DB (JSON-only mode)");
+  }
 
   // Создание бота
   const bot = new Bot(config.botToken);
