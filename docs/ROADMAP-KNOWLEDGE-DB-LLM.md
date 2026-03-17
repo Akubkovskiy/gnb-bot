@@ -170,35 +170,35 @@ Before each subphase, Claude should self-check:
 
 ## 6. Detailed Phases
 
-## Phase 1 - Patch RFC and Finalize the Knowledge Model
-Estimate: 1 day
+## Phase 1 - Patch RFC and Finalize the Knowledge Model ✅
+Estimate: 1 day | **Completed: 2026-03-17**
 
 Goal:
 - align the RFC and roadmap with the real target architecture
 
 Tasks:
-- [ ] audit `docs/RFC-SQLITE-KNOWLEDGE-MODEL.md`
-- [ ] add or confirm `field_values`
-- [ ] add or confirm `conflict_resolutions`
-- [ ] add or confirm `person_role_assignments`
-- [ ] add document lineage fields
-- [ ] decide generic `document_links` vs generic + typed link tables
-- [ ] mark `intake_drafts outside SQLite` as temporary bridge only
-- [ ] define retrieval-oriented indexes
-- [ ] document code vs skill boundary
-- [ ] document that skills do not query DB directly
+- [x] audit `docs/RFC-SQLITE-KNOWLEDGE-MODEL.md`
+- [x] add or confirm `field_values`
+- [x] add or confirm `conflict_resolutions`
+- [x] add or confirm `person_role_assignments`
+- [x] add document lineage fields (origin, supersedes_document_id, reused_from_transition_id)
+- [x] decide generic `document_links` vs generic + typed link tables → kept generic, sufficient
+- [x] mark `intake_drafts outside SQLite` as temporary bridge only
+- [x] define retrieval-oriented indexes (20 indexes)
+- [x] document code vs skill boundary
+- [x] document that skills do not query DB directly
 
 Deliverables:
-- [ ] updated `docs/RFC-SQLITE-KNOWLEDGE-MODEL.md`
-- [ ] updated `docs/ROADMAP-KNOWLEDGE-DB-LLM.md`
-- [ ] optional `docs/RFC-KNOWLEDGE-ARCHITECTURE.md`
+- [x] updated `docs/RFC-SQLITE-KNOWLEDGE-MODEL.md` — 16 tables, indexes, retrieval queries
+- [x] updated `docs/ROADMAP-KNOWLEDGE-DB-LLM.md`
+- [x] `testdata/real-docs/` — real test documents added
 
-Done when:
-- [ ] the schema is implementation-ready
-- [ ] roadmap and RFC do not contradict each other
+Done:
+- [x] schema is implementation-ready
+- [x] roadmap and RFC do not contradict each other
 
 Human gate:
-- [ ] owner reviews the finalized schema direction
+- [x] owner reviewed — approved to proceed to Phase 2
 
 ## Phase 2 - SQLite Foundation + Seed / Migration Bridge
 Estimate: 2-3 days
