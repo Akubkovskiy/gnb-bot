@@ -313,11 +313,13 @@ export async function processTextWithReasoning(
       { text: "Проверить ГНБ", callback_data: "intake:review" },
       { text: "Подтвердить", callback_data: "intake:confirm" },
     ]);
+    buttons.push([{ text: "Отменить", callback_data: "intake:cancel" }]);
   } else {
     buttons.push([
       { text: `Не хватает (${missingRequired.length})`, callback_data: "intake:missing" },
       { text: "Сводка", callback_data: "intake:review" },
     ]);
+    buttons.push([{ text: "Отменить", callback_data: "intake:cancel" }]);
   }
 
   return {
