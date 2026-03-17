@@ -366,8 +366,8 @@ Tasks:
 Done when:
 - [ ] messages like "Master po ERS SVRES AO OEK Akimov Yu.O." stop failing for semantic reasons
 
-## Phase 6 - Conflict, Review, Reuse, and Knowledge Ingest UX
-Estimate: 1 day
+## Phase 6 - Conflict, Review, Reuse, and Knowledge Ingest UX ✅
+Estimate: 1 day | **Completed: 2026-03-17 (core logic)**
 
 Goal:
 - make the system explain itself and ask only the right questions
