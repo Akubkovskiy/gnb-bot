@@ -27,7 +27,10 @@ import {
 } from "../intake/intake-engine.js";
 import type { IntakeResponse, InlineButton } from "../intake/intake-types.js";
 import { InlineKeyboard } from "grammy";
-import { processTextWithReasoning } from "../intake/reasoning-handler.js";
+import { processTextWithReasoning, shouldUseReasoning } from "../intake/reasoning-handler.js";
+import { processKnowledgeIngest, persistIngestResult } from "../db/knowledge-ingest.js";
+import { getDb } from "../db/client.js";
+import { extractDocument, mapExtractionToFields } from "../intake/doc-extractor.js";
 
 const CLAUDE_SYSTEM = fs.readFileSync(
   path.join(process.cwd(), "CLAUDE.md"),
@@ -350,6 +353,49 @@ export function registerHandlers(bot: Bot): void {
         logger.error({ err }, "Ошибка intake документа");
         await ctx.api.editMessageText(chatId, status.message_id, `❌ Ошибка: ${err instanceof Error ? err.message : "неизвестная ошибка"}`);
         return;
+      }
+    }
+
+    // Knowledge ingest: no active draft, but document could be useful for DB
+    if ([".pdf", ".xls", ".xlsx"].includes(ext)) {
+      const status = await ctx.reply(`📥 Сохраняю данные из ${fileName}...`);
+      try {
+        const localPath = await downloadTelegramFile(bot, doc.file_id, fileName);
+        const extraction = await extractDocument(localPath, askClaude);
+
+        // Try knowledge ingest via Claude reasoning
+        const memDir = getMemoryDir();
+        const db = getDb(memDir);
+        const ingestResult = await processKnowledgeIngest(
+          db, extraction as any, extraction.doc_class, fileName, askClaude,
+        );
+
+        fs.unlinkSync(localPath);
+
+        if (ingestResult && ingestResult.missingLinks.length === 0) {
+          // All links resolved — persist immediately
+          const { documentId } = persistIngestResult(db, ingestResult, localPath);
+          await ctx.api.editMessageText(chatId, status.message_id,
+            `✅ Сохранено в базу: ${ingestResult.summary}\nID: ${documentId}`);
+          return;
+        } else if (ingestResult && ingestResult.questionsForOwner.length > 0) {
+          // Missing links — ask owner
+          await ctx.api.editMessageText(chatId, status.message_id,
+            `📎 ${ingestResult.summary}\n\n❓ ${ingestResult.questionsForOwner.join("\n❓ ")}`);
+          return;
+        } else if (ingestResult) {
+          await ctx.api.editMessageText(chatId, status.message_id,
+            `📎 ${ingestResult.summary}\nДля сохранения в базу начните /new_gnb.`);
+          return;
+        }
+
+        // Ingest failed — fall through to general handler
+        await ctx.api.editMessageText(chatId, status.message_id,
+          `📎 Получен ${fileName}. Для работы с документом начните /new_gnb.`);
+        return;
+      } catch (err) {
+        logger.error({ err }, "Knowledge ingest error");
+        // Fall through to general handler
       }
     }
 

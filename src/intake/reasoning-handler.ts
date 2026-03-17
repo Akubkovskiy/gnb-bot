@@ -16,9 +16,55 @@ import { processIntakeText } from "../db/reasoning.js";
 import { getDb } from "../db/client.js";
 import { logger } from "../logger.js";
 
-type ClaudeCaller = (prompt: string, opts?: { systemPrompt?: string }) => Promise<string>;
+type ClaudeCaller = (prompt: string, opts?: { systemPrompt?: string; model?: string }) => Promise<string>;
 
 const REGEX_THRESHOLD = 2;
+
+// === Gating: decide whether Claude reasoning is needed ===
+
+const CONFIRM_WORDS = new Set(["да", "нет", "ок", "подтвердить", "отмена", "cancel", "review", "проверить", "сводка", "пропустить"]);
+
+/**
+ * Determine whether this text needs Claude reasoning or can be handled cheaply.
+ * Returns true = call Claude, false = regex-only is sufficient.
+ */
+export function shouldUseReasoning(input: string, regexFieldCount: number): boolean {
+  const trimmed = input.trim();
+  const lower = trimmed.toLowerCase();
+
+  // 1. Short confirmations — never Claude
+  if (CONFIRM_WORDS.has(lower)) return false;
+
+  // 2. Very short text (1-2 words, no semantic content) — skip
+  if (trimmed.split(/\s+/).length <= 2 && regexFieldCount === 0) {
+    if (/^[А-ЯЁ][а-яё]+$/.test(trimmed)) return true; // single surname → might be signatory
+    if (lower.includes("нет")) return true; // "Стройтреста нет" → absence declaration
+    if (/(?:мастер|технадзор|подрядчик|субподрядчик)/i.test(lower)) return true; // role mention
+    return false;
+  }
+
+  // 3. Regex found enough fields — no need for Claude
+  if (regexFieldCount >= REGEX_THRESHOLD) return false;
+
+  // 4. Looks like a lookup/question — needs Claude
+  if (lower.includes("что у нас") || lower.includes("какие") || lower.includes("покажи") || lower.includes("есть ли")) return true;
+
+  // 5. Looks like a reuse request — needs Claude
+  if (lower.includes("возьми") || lower.includes("используй") || lower.includes("как в прошл") || lower.includes("reuse")) return true;
+
+  // 6. Looks like absence/role change — needs Claude
+  if (lower.includes("нет") && lower.length > 5) return true; // "Стройтреста нет"
+  if (/(?:мастер|технадзор|подрядчик|субподрядчик|sign)/i.test(lower)) return true;
+
+  // 7. Has cyrillic names that might be signatories — needs Claude
+  const potentialNames = trimmed.match(/[А-ЯЁ][а-яё]{2,}/g);
+  if (potentialNames && potentialNames.length > 0 && regexFieldCount < REGEX_THRESHOLD) return true;
+
+  // 8. Medium-length text with low regex yield — try Claude
+  if (trimmed.length > 20 && regexFieldCount < REGEX_THRESHOLD) return true;
+
+  return false;
+}
 
 export async function processTextWithReasoning(
   _chatId: number,
@@ -44,7 +90,7 @@ export async function processTextWithReasoning(
   let usedReasoning = false;
   let reasoningSummary: string | undefined;
 
-  if (regexResult.fields.length < REGEX_THRESHOLD && objectId) {
+  if (shouldUseReasoning(input, regexResult.fields.length) && objectId) {
     try {
       const db = getDb(memoryDir);
       const draftSummary: Record<string, unknown> = {};

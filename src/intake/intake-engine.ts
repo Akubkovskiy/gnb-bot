@@ -17,6 +17,9 @@ import { extractDocument, mapExtractionToFields, type ClaudeCaller } from "./doc
 import { buildReviewReport, summarizeBase } from "./review-builder.js";
 import { buildIntakeResponse, buildReviewText, buildConfirmBlockedText, buildMissingFieldsText } from "./intake-response.js";
 import { isSchemeAuthoritative } from "./field-policy.js";
+import { findCustomer as dbFindCustomer, findObject as dbFindObject } from "../db/retrieval.js";
+import { getDb } from "../db/client.js";
+import { getMemoryDir } from "../utils/paths.js";
 import { finalizeIntake } from "./finalize-intake.js";
 import { parseGnbNumber } from "../domain/formatters.js";
 import { buildDocumentReview, formatDocumentReview } from "./document-review.js";
@@ -463,7 +466,7 @@ function handleResumePrompt(chatId: number, input: string, stores: IntakeStores)
 }
 
 function handleCustomerInput(chatId: number, input: string, stores: IntakeStores): IntakeResponse {
-  // Search customer in store
+  // Search customer in JSON store first (backward compat)
   const found = stores.customers.findByNameOrAlias(input);
 
   if (found) {
@@ -476,6 +479,24 @@ function handleCustomerInput(chatId: number, input: string, stores: IntakeStores
     }
     return { message: `${found.name}. Какой объект? (введите название)` };
   }
+
+  // Try SQLite alias-aware lookup as fallback
+  try {
+    const db = getDb(getMemoryDir());
+    const dbCustomer = dbFindCustomer(db, input);
+    if (dbCustomer) {
+      const { createRepos } = require("../db/repositories.js");
+      const repos = createRepos(db);
+      const dbObjects = repos.objects.getByCustomerId(dbCustomer.id);
+      setSession(chatId, { ...getSession(chatId), state: "awaiting_object", customer: dbCustomer.name });
+
+      if (dbObjects.length > 0) {
+        const list = dbObjects.map((o: any, i: number) => `  ${i + 1}. ${o.short_name}`).join("\n");
+        return { message: `${dbCustomer.name}. Какой объект?\n${list}` };
+      }
+      return { message: `${dbCustomer.name}. Какой объект? (введите название)` };
+    }
+  } catch { /* DB not initialized — fallthrough */ }
 
   // Accept as new customer
   setSession(chatId, { ...getSession(chatId), state: "awaiting_object", customer: input });
