@@ -137,12 +137,16 @@ export class IntakeDraftStore {
    * unless the new source is manual_text (owner override).
    * Returns true if field was updated, false if conflict was detected.
    */
-  setField(id: string, field: ExtractedField): { updated: boolean; conflict: boolean } {
+  setField(
+    id: string,
+    field: ExtractedField,
+    opts?: { schemeAuthoritative?: boolean },
+  ): { updated: boolean; conflict: boolean } {
     const draft = this.get(id);
     if (!draft) throw new Error(`IntakeDraft ${id} not found`);
 
     const existingIdx = draft.fields.findIndex(
-      (f) => f.field_name === field.field_name,
+      (f) => f.field_name === field.field_name && !f.conflict_with_existing,
     );
 
     if (existingIdx === -1) {
@@ -170,10 +174,26 @@ export class IntakeDraftStore {
       return { updated: false, conflict: false };
     }
 
+    // Scheme-authoritative: ИС overrides base/inherited for this field
+    if (opts?.schemeAuthoritative) {
+      draft.fields[existingIdx] = field;
+      this.applyFieldToData(draft, field);
+      draft.updated_at = new Date().toISOString();
+      writeJson(this.filePath(id), draft);
+      return { updated: true, conflict: false };
+    }
+
+    // Routing fields (customer/object short names): ИС values don't conflict
+    // These are navigation labels, not doc-generation values
+    if (existing.source_id === "manual-identity") {
+      // Existing routing field from /new_gnb selection — lower-priority doc source
+      // doesn't conflict, just silently skip
+      return { updated: false, conflict: false };
+    }
+
     // Confirmed field cannot be overwritten by non-manual source
     if (existing.confirmed_by_owner) {
       field.conflict_with_existing = true;
-      // Store as additional candidate but don't overwrite
       draft.fields.push(field);
       draft.updated_at = new Date().toISOString();
       writeJson(this.filePath(id), draft);

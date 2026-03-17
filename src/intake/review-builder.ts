@@ -21,7 +21,7 @@ import type {
 } from "./review-types.js";
 import { buildPassportSummary, requiresGeometryManualInput, hasExecutiveSchemeSource } from "./passport-builder.js";
 import { getAllConflicts, getBaseFieldValue, valuesMatch } from "./conflicts.js";
-import { getFieldLabel, getVolatility, needsAttentionIfInherited } from "./field-policy.js";
+import { getFieldLabel, getVolatility, needsAttentionIfInherited, isRoutingField } from "./field-policy.js";
 
 /**
  * Build full review report for a draft.
@@ -88,7 +88,7 @@ function buildChangedReport(draft: IntakeDraft, base?: Transition): ReviewChange
   for (const field of draft.fields) {
     if (field.conflict_with_existing) continue;
     if (field.source_id?.startsWith(baseSourcePrefix)) continue; // inherited, not changed
-    if (getVolatility(field.field_name) === "volatile") continue; // volatile expected to differ
+    if (isRoutingField(field.field_name)) continue; // routing context, not doc field
 
     // Compare directly against base transition value
     const baseValue = getBaseFieldValue(base, field.field_name);

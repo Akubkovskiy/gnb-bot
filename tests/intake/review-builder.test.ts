@@ -180,20 +180,20 @@ describe("inheritance", () => {
 // === Conflicts ===
 
 describe("conflicts", () => {
-  it("detectBaseConflicts finds differing semi-stable field", () => {
+  it("detectBaseConflicts finds differing owner-authority field", () => {
     const base = seedBaseTransition();
     const draft = store.create(1);
     applyBaseTransitionToDraft(draft.id, base, store);
 
-    // New project_number (semi-stable) differs from base
-    store.setField(draft.id, makeField("project_number", "ШФ-999"));
+    // pipe (owner-authority, semi-stable) differs from base
+    store.setField(draft.id, makeField("pipe", { mark: "Другая труба", diameter: "d=160", diameter_mm: 160 }));
 
     const loaded = store.get(draft.id)!;
     const conflicts = detectBaseConflicts(loaded, base);
 
-    const projConflict = conflicts.find((c) => c.field_name === "project_number");
-    expect(projConflict).toBeDefined();
-    expect(projConflict!.requires_owner_confirmation).toBe(true);
+    const pipeConflict = conflicts.find((c) => c.field_name === "pipe");
+    expect(pipeConflict).toBeDefined();
+    expect(pipeConflict!.requires_owner_confirmation).toBe(true);
   });
 
   it("detectBaseConflicts ignores inherited fields (same source)", () => {
@@ -379,20 +379,20 @@ describe("changed-fields detection", () => {
     expect(projChanged!.new_value).toBe("ШФ-456");
   });
 
-  it("does NOT report changed for volatile fields (expected to differ)", () => {
+  it("does NOT report changed for routing fields", () => {
     const base = seedBaseTransition();
     const draft = store.create(1);
     applyBaseTransitionToDraft(draft.id, base, store);
 
-    // Set volatile fields — these should not appear in changed
-    store.setField(draft.id, makeField("gnb_number", "ЗП № 5-5"));
-    store.setField(draft.id, makeField("address", "г. Москва, Новый адрес"));
+    // Set routing fields — these should not appear in changed
+    store.setField(draft.id, makeField("customer", "Крафт"));
+    store.setField(draft.id, makeField("object", "Марьино"));
 
     const loaded = store.get(draft.id)!;
     const report = buildReviewReport(loaded, base);
 
-    expect(report.changed.find((c) => c.field_name === "gnb_number")).toBeUndefined();
-    expect(report.changed.find((c) => c.field_name === "address")).toBeUndefined();
+    expect(report.changed.find((c) => c.field_name === "customer")).toBeUndefined();
+    expect(report.changed.find((c) => c.field_name === "object")).toBeUndefined();
   });
 
   it("does NOT report changed when value matches base", () => {
@@ -407,6 +407,79 @@ describe("changed-fields detection", () => {
     const report = buildReviewReport(loaded, base);
 
     expect(report.changed.find((c) => c.field_name === "project_number")).toBeUndefined();
+  });
+});
+
+// === Scheme authority ===
+
+describe("scheme authority", () => {
+  it("scheme-authoritative field auto-applies over base", () => {
+    const base = seedBaseTransition();
+    const draft = store.create(1);
+    applyBaseTransitionToDraft(draft.id, base, store);
+
+    // Simulate ИС extraction updating project_number (scheme-authoritative)
+    store.setField(draft.id, makeField("project_number", "04-ОЭКСТ-КС-25-ТКР.1.ГЧ", {
+      source_type: "pdf",
+      source_id: "doc-is",
+    }), { schemeAuthoritative: true });
+
+    const loaded = store.get(draft.id)!;
+    // Active value should be the new one
+    expect(loaded.data.project_number).toBe("04-ОЭКСТ-КС-25-ТКР.1.ГЧ");
+  });
+
+  it("scheme-authoritative field shows as changed, not conflict", () => {
+    const base = seedBaseTransition();
+    const draft = store.create(1);
+    applyBaseTransitionToDraft(draft.id, base, store);
+
+    store.setField(draft.id, makeField("project_number", "НОВЫЙ-ШИФР", {
+      source_type: "pdf",
+      source_id: "doc-is",
+    }), { schemeAuthoritative: true });
+
+    const loaded = store.get(draft.id)!;
+    const report = buildReviewReport(loaded, base);
+
+    // Should be in changed, not conflicts
+    expect(report.changed.find((c) => c.field_name === "project_number")).toBeDefined();
+    expect(report.conflicts.find((c) => c.field_name === "project_number")).toBeUndefined();
+  });
+
+  it("routing fields don't produce conflicts with scheme extraction", () => {
+    const base = seedBaseTransition();
+    const draft = store.create(1);
+    applyBaseTransitionToDraft(draft.id, base, store);
+
+    // Routing field "customer" = "Крафт" (from /new_gnb selection)
+    store.setField(draft.id, makeField("customer", "Крафт", {
+      source_id: "manual-identity",
+    }));
+
+    const loaded = store.get(draft.id)!;
+    const conflicts = detectBaseConflicts(loaded, base);
+
+    // Routing fields should not appear in conflicts
+    expect(conflicts.find((c) => c.field_name === "customer")).toBeUndefined();
+  });
+
+  it("owner-authority fields still produce conflicts", () => {
+    const base = seedBaseTransition();
+    const draft = store.create(1);
+    applyBaseTransitionToDraft(draft.id, base, store);
+
+    // Signatory (owner-authority) changed — stored as internal conflict by setField
+    store.setField(draft.id, makeField("signatories.tech_supervisor",
+      { person_id: "new", role: "tech", org_description: "X", position: "Y", full_name: "Новый ТН", aosr_full_line: "" },
+      { source_type: "pdf", source_id: "doc-order" },
+    ));
+
+    const loaded = store.get(draft.id)!;
+    const conflicts = getAllConflicts(loaded, base);
+
+    // Owner-authority field should produce internal conflict
+    expect(conflicts.find((c) => c.field_name === "signatories.tech_supervisor")).toBeDefined();
   });
 });
 

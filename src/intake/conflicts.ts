@@ -7,7 +7,7 @@
 import type { IntakeDraft, FieldName, ExtractedField } from "./intake-types.js";
 import type { Transition } from "../domain/types.js";
 import type { ReviewConflict } from "./review-types.js";
-import { getFieldLabel, getVolatility } from "./field-policy.js";
+import { getFieldLabel, getVolatility, isRoutingField, isSchemeAuthoritative } from "./field-policy.js";
 
 /**
  * Detect conflicts between draft fields and a base transition.
@@ -23,6 +23,8 @@ export function detectBaseConflicts(
     if (field.conflict_with_existing) continue; // already a conflict candidate
     if (field.source_id?.startsWith("base:")) continue; // inherited from same base
     if (getVolatility(field.field_name) === "volatile") continue; // volatile fields expected to differ
+    if (isRoutingField(field.field_name)) continue; // routing context ≠ doc fields
+    if (isSchemeAuthoritative(field.field_name)) continue; // scheme auto-applied, shown as "changed" not conflict
 
     const baseValue = getBaseFieldValue(base, field.field_name);
     if (baseValue === undefined) continue;
