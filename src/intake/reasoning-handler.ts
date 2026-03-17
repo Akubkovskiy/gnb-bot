@@ -193,6 +193,31 @@ export async function processTextWithReasoning(
                 confirmed_by_owner: false,
                 conflict_with_existing: false,
               });
+
+              // Auto-fill organization from person's org
+              if (org) {
+                const orgFieldName = roleToOrgFieldName(signatoryUpdate.role);
+                if (orgFieldName) {
+                  fieldsToApply.push({
+                    field_name: orgFieldName,
+                    value: {
+                      id: org.id,
+                      name: org.name,
+                      short_name: org.short_name,
+                      ogrn: org.ogrn ?? "",
+                      inn: org.inn ?? "",
+                      legal_address: org.legal_address ?? "",
+                      phone: org.phone ?? "",
+                      sro_name: org.sro_name ?? "",
+                    },
+                    source_id: sourceId,
+                    source_type: "manual_text",
+                    confidence: "high",
+                    confirmed_by_owner: false,
+                    conflict_with_existing: false,
+                  });
+                }
+              }
             } else if (signatoryUpdate.action === "remove") {
               const fieldName = roleToFieldName(signatoryUpdate.role);
               if (!fieldName) continue;
@@ -323,4 +348,20 @@ function roleToFieldName(role: string): FieldName | null {
     default:
       return null;
   }
+}
+
+/** Map signatory role to the corresponding organization field. */
+function roleToOrgFieldName(role: string): FieldName | null {
+  const r = role.toLowerCase().trim();
+  if (["sign1", "sign1_customer", "мастер", "мастер рэс", "tech", "tech_supervisor", "технадзор"].includes(r)) {
+    return "organizations.customer";
+  }
+  if (["sign2", "sign2_contractor", "подрядчик"].includes(r)) {
+    return "organizations.contractor";
+  }
+  // sign3/subcontractor → designer or subcontractor org, context-dependent
+  if (["sign3", "sign3_optional", "sign3_subcontractor", "субподрядчик"].includes(r)) {
+    return "organizations.designer"; // OEK model: designer = СПЕЦИНЖСТРОЙ = subcontractor
+  }
+  return null;
 }

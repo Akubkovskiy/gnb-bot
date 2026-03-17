@@ -97,8 +97,11 @@ describe("processTextWithReasoning", () => {
 
     expect(result).not.toBeNull();
     expect(result!.usedReasoning).toBe(true);
-    expect(result!.updatedFields).toHaveLength(1);
+    expect(result!.updatedFields.length).toBeGreaterThanOrEqual(1);
     expect(result!.updatedFields[0].name).toBe("signatories.tech_supervisor");
+    // Also auto-fills organizations.customer from person's org
+    const orgField = result!.updatedFields.find((f) => f.name === "organizations.customer");
+    expect(orgField).toBeDefined();
   });
 
   it("returns owner clarification for needs_manual signatory instead of generic fallback", async () => {
