@@ -71,8 +71,24 @@ export async function processTextWithReasoning(
         db, input, objectId, draftSummary, missingFields, callClaude,
       );
 
-      if (reasoningOutput && reasoningOutput.fieldUpdates.length > 0) {
-        // Convert reasoning output to ExtractedFields
+      if (reasoningOutput) {
+        // Handle non-field intents first
+        if (reasoningOutput.intent === "lookup_query" || reasoningOutput.intent === "question") {
+          // Lookup/question — return Claude's summary directly, no field updates
+          return {
+            response: { message: reasoningOutput.summary },
+            updatedFields: [],
+            conflictFields: [],
+            usedReasoning: true,
+          };
+        }
+
+        if (reasoningOutput.intent === "confirmation") {
+          // Confirmation — pass through to normal handler
+          return null; // Let sync handler deal with да/нет
+        }
+
+        // Convert field updates to ExtractedFields
         fieldsToApply = reasoningOutput.fieldUpdates.map((fu) => ({
           field_name: fu.fieldName as FieldName,
           value: fu.value,

@@ -71,6 +71,10 @@ export async function processIntakeText(
 }
 
 // === Prompt builders ===
+// NOTE: These inline prompts are the actual runtime prompts.
+// .claude/skills/*/SKILL.md files are reference specs for the reasoning contracts.
+// They define the expected behavior but are NOT read at runtime by the bot.
+// When updating behavior, update BOTH the inline prompt AND the SKILL.md.
 
 function buildIntakeReasoningPrompt(input: IntakeReasoningInput): string {
   return `Ты — GNB intake reasoning engine. Анализируешь сообщение owner'а и возвращаешь structured JSON.

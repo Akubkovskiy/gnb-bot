@@ -25,6 +25,16 @@ The bot must eventually support natural requests like:
 - "the site manager is Shcheglov from SPECINZHSTROY"
 - "there is no Stroytrest on this object"
 
+The target workflow is voice/text-first:
+- the owner can call objects by working aliases
+- the owner can upload an executive scheme, pipe passport, and reference template
+- the bot should extract what it can, reuse what already exists, and ask only for missing or changed data
+- the bot should assemble a GNB passport for review before generation
+- the bot should later place reused and new documents into the new transition storage/cloud structure
+
+Reference product scenarios:
+- `docs/GNB-TARGET-SCENARIOS.md`
+
 ## 2. Core Architecture
 
 ### 2.1 Storage layer
@@ -101,11 +111,14 @@ Must stay in code:
 
 We do not need 15 tiny skills.
 
-Initial runtime skill set:
+Core runtime skill set:
 - `gnb-intake-reasoning`
 - `gnb-draft-advisor`
 - `gnb-conflict-resolver`
 - `gnb-review-narrator`
+
+Additional support skill:
+- `gnb-knowledge-ingest`
 
 ### 3.3 Dev/support Claude skills
 
@@ -123,6 +136,16 @@ Correct flow:
 3. code assembles structured payload
 4. Claude skill reasons over the payload
 5. code validates and applies the result
+
+Important variation:
+- `gnb-knowledge-ingest` may be used for standalone uploads and explicit "save data" commands
+- it still does not write to DB directly
+- it returns a structured ingest payload
+- code asks missing linking questions such as:
+  - which object does this belong to?
+  - is this tied to a person, material, or transition?
+  - should this be saved for future reuse?
+- code then persists the result deterministically
 
 ## 4. Non-Negotiable Design Rules
 
@@ -167,6 +190,19 @@ Before each subphase, Claude should self-check:
 - Am I putting retrieval in code and reasoning in skills?
 - Am I accidentally building another parser layer?
 - Will this step help future questions like "what do we have for Gaydukov?"
+- Am I moving toward the target scenarios in `docs/GNB-TARGET-SCENARIOS.md`?
+
+## 5.1 Product Reference Scenarios
+
+The roadmap must be interpreted against a concrete target behavior set:
+- new GNB from natural voice/text plus uploaded documents
+- standalone "save data" document ingestion into DB
+- retrieval question like "what do we have for Gaydukov?"
+- reuse from previous transition/object
+- delta workflow where a new GNB is mostly the same and only address/dates/lengths change
+- final review, generation, and later storage/cloud placement
+
+Use `docs/GNB-TARGET-SCENARIOS.md` as the reference document for these behaviors.
 
 ## 6. Detailed Phases
 
@@ -330,15 +366,20 @@ Tasks:
 Done when:
 - [ ] messages like "Master po ERS SVRES AO OEK Akimov Yu.O." stop failing for semantic reasons
 
-## Phase 6 - Conflict, Review, and Reuse UX
+## Phase 6 - Conflict, Review, Reuse, and Knowledge Ingest UX
 Estimate: 1 day
 
 Goal:
 - make the system explain itself and ask only the right questions
+- add a standalone knowledge-ingest path for documents that should be saved into the DB even outside the active draft
 
 Tasks:
 - [ ] wire `gnb-conflict-resolver`
 - [ ] wire `gnb-review-narrator`
+- [ ] implement `gnb-knowledge-ingest` support flow
+- [ ] support explicit owner commands like `save data`
+- [ ] if a standalone document is uploaded, ask what object / person / material / transition it belongs to
+- [ ] persist the linked document into DB for future retrieval/reuse
 - [ ] update review sections:
   - [ ] inherited
   - [ ] changed
@@ -355,6 +396,7 @@ Tasks:
 
 Done when:
 - [ ] `/review_gnb` becomes an engineering summary, not a technical dump
+- [ ] the bot can save useful standalone documents into DB for future reuse
 
 ## Phase 7 - Voice-Ready Input and UX Polish
 Estimate: 1-2 days
@@ -364,13 +406,30 @@ Goal:
 
 Tasks:
 - [ ] adapt reasoning to noisy conversational text
-- [ ] prepare future voice transcript path
+- [ ] treat voice transcript as the same semantic pipeline, not a separate parser path
+- [ ] support object/customer aliases in voice/text understanding
 - [ ] reduce message spam
 - [ ] add menu/buttons for common DB-aware actions
 - [ ] polish the owner interaction flow
 
 Done when:
 - [ ] the bot can handle natural spoken-like instructions much better than rigid parser input
+
+## Phase 8 - Storage and Cloud Placement
+Estimate: 1-2 days
+
+Goal:
+- make finalized and reused documents land in the correct transition storage structure
+
+Tasks:
+- [ ] define the transition storage layout
+- [ ] copy or link reused documents into the new transition directory
+- [ ] persist document placement decisions
+- [ ] prepare cloud sync/upload integration point
+- [ ] make sure generated files and reused evidence are discoverable from the transition
+
+Done when:
+- [ ] the bot not only uses documents logically, but also puts them in the right place for future work
 
 ## 7. Human Test Gates
 
@@ -390,6 +449,9 @@ Gate 4:
 
 Gate 5:
 - runtime integration / stage rehearsal
+
+Gate 6:
+- storage/cloud placement verified on a real transition
 
 Outside these gates Claude should work autonomously unless blocked.
 
@@ -439,6 +501,7 @@ Rules:
 5. Phase 5 - Replace regex-heavy text path
 6. Phase 6 - Conflict, review, and reuse UX
 7. Phase 7 - Voice-ready input and UX polish
+8. Phase 8 - Storage and cloud placement
 
 ## 11. Highest-Value Path
 

@@ -59,7 +59,9 @@ export interface IntakeReasoningOutput {
   signatoryUpdates?: Array<{
     role: string;
     personId: string;
-    action: "assign" | "remove" | "confirm";
+    action: "assign" | "remove" | "confirm" | "needs_manual";
+    /** If action=needs_manual and person not in DB, partially extracted data. */
+    newPersonData?: { fullName?: string; position?: string; org?: string };
   }>;
   /** Questions to ask owner (if any). */
   questionsForOwner?: string[];
@@ -168,4 +170,50 @@ export interface ReviewNarratorOutput {
   readyForConfirmation: boolean;
   /** Blocking reasons (if not ready). */
   blockers?: string[];
+}
+
+// === gnb-knowledge-ingest ===
+
+export type IngestDocKind =
+  | "person_document"
+  | "pipe_document"
+  | "material_document"
+  | "scheme"
+  | "reference_act"
+  | "organization_document"
+  | "unknown";
+
+export interface KnowledgeIngestInput {
+  /** What Claude extracted from the document. */
+  extractedData: Record<string, unknown>;
+  /** Document classification. */
+  docClass: string;
+  /** File name. */
+  fileName: string;
+  /** People found in DB that match extracted names. */
+  matchedPeople: Array<{ personId: string; fullName: string; org?: string }>;
+  /** Materials found in DB. */
+  matchedMaterials: Array<{ materialId: string; name: string; type: string }>;
+  /** Objects in DB. */
+  knownObjects: Array<{ objectId: string; shortName: string; customerName: string }>;
+}
+
+export interface KnowledgeIngestOutput {
+  /** What kind of knowledge this is. */
+  docKind: IngestDocKind;
+  /** Extracted structured data. */
+  extractedData: Record<string, unknown>;
+  /** Suggested entity links. */
+  suggestedLinks: {
+    personId?: string | null;
+    objectId?: string | null;
+    materialId?: string | null;
+    transitionId?: string | null;
+  };
+  /** Links that couldn't be determined. */
+  missingLinks: string[];
+  /** Questions to ask owner for missing links. */
+  questionsForOwner: string[];
+  /** Human summary. */
+  summary: string;
 }

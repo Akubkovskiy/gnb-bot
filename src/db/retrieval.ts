@@ -264,6 +264,73 @@ export function getBaseKnowledgeForDraft(
   };
 }
 
+// === Alias-friendly lookups ===
+
+/**
+ * Find customer by name, alias, or partial match.
+ * Supports: "Крафт", "крафт", "kraft", "ОЭК".
+ */
+export function findCustomer(db: Db, query: string): typeof s.customers.$inferSelect | null {
+  const lower = query.toLowerCase().trim();
+
+  // Try exact alias match first
+  const aliasRow = db.select().from(s.customerAliases)
+    .where(eq(s.customerAliases.alias, lower))
+    .get();
+  if (aliasRow) {
+    return db.select().from(s.customers).where(eq(s.customers.id, aliasRow.customer_id)).get() ?? null;
+  }
+
+  // Try name match
+  const byName = db.select().from(s.customers)
+    .where(like(s.customers.name, `%${query}%`))
+    .get();
+  if (byName) return byName;
+
+  // Try official name
+  return db.select().from(s.customers)
+    .where(like(s.customers.official_name, `%${query}%`))
+    .get() ?? null;
+}
+
+/**
+ * Find object by short name, official name, or partial match within a customer.
+ */
+export function findObject(db: Db, customerId: string, query: string): typeof s.objects.$inferSelect | null {
+  const objects = db.select().from(s.objects)
+    .where(eq(s.objects.customer_id, customerId))
+    .all();
+
+  const lower = query.toLowerCase().trim();
+
+  // Exact short name
+  const exact = objects.find((o) => o.short_name.toLowerCase() === lower);
+  if (exact) return exact;
+
+  // Partial short name
+  const partial = objects.find((o) => o.short_name.toLowerCase().includes(lower));
+  if (partial) return partial;
+
+  // Official name
+  const official = objects.find((o) => o.official_name?.toLowerCase().includes(lower));
+  if (official) return official;
+
+  return null;
+}
+
+/**
+ * Find object across all customers by any name.
+ */
+export function findObjectGlobal(db: Db, query: string): typeof s.objects.$inferSelect | null {
+  const lower = query.toLowerCase().trim();
+  return db.select().from(s.objects)
+    .where(or(
+      like(s.objects.short_name, `%${query}%`),
+      like(s.objects.official_name, `%${query}%`),
+    ))
+    .get() ?? null;
+}
+
 // === Internal helpers ===
 
 function buildPersonProfile(db: Db, person: typeof s.people.$inferSelect): PersonProfile {
