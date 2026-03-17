@@ -2,11 +2,12 @@
  * Intake response builder — concise, engineering-style Telegram messages.
  */
 
-import type { IntakeDraft, DocClass } from "./intake-types.js";
+import type { IntakeDraft, DocClass, FieldName } from "./intake-types.js";
 import type { Transition } from "../domain/types.js";
 import type { ReviewReport } from "./review-types.js";
 import { REQUIRED_FIELDS } from "./intake-types.js";
 import { hasExecutiveSchemeSource } from "./passport-builder.js";
+import { getFieldLabel } from "./field-policy.js";
 
 // === Intake event response ===
 
@@ -43,31 +44,45 @@ export function buildIntakeResponse(input: IntakeResponseInput): string {
   ).length;
   const requiredTotal = REQUIRED_FIELDS.length;
 
-  // Line 1: what was received + stats
-  const fileName = input.fileName ? ` ${input.fileName}` : "";
-  let line1 = `📎 ${label}${fileName} (${input.fieldsExtracted}→${input.fieldsUpdated})`;
-  if (input.conflictsFound > 0) line1 += ` ⚠${input.conflictsFound}`;
+  const parts: string[] = [];
 
-  // Line 2: progress bar
-  const line2 = `${requiredPresent}/${requiredTotal} обяз.`;
+  // Line 1: what was received
+  const fileName = input.fileName ? `: ${input.fileName}` : "";
+  parts.push(`📎 ${label}${fileName}`);
 
-  // Line 3: warnings/missing (compact)
-  const parts: string[] = [line1, line2];
+  // Line 2: extraction result
+  if (input.fieldsExtracted > 0) {
+    parts.push(`Извлечено: ${input.fieldsExtracted}, обновлено: ${input.fieldsUpdated}`);
+  } else {
+    parts.push("Не удалось извлечь структурированные данные");
+  }
 
+  // Warnings
   if (input.warnings.length > 0) {
-    parts.push(`⚠ ${input.warnings[0]}`);
+    parts.push(`  ⚠ ${input.warnings[0]}`);
+  }
+  if (input.conflictsFound > 0) {
+    parts.push(`  ⚠ Конфликтов: ${input.conflictsFound}`);
   }
 
+  // Progress
+  parts.push(`\nПаспорт ГНБ: ${requiredPresent}/${requiredTotal} обязательных полей`);
+
+  // Scheme reminder
   if (!hasExecutiveSchemeSource(input.draft)) {
-    parts.push("📌 нет ИС PDF");
+    parts.push("📌 ИС PDF ещё не прислана (нужна для геометрии)");
   }
 
+  // Missing critical fields — Russian labels
   const missingCritical = REQUIRED_FIELDS.filter(
     (r) => !input.draft.fields.some((f) => f.field_name === r && !f.conflict_with_existing),
   );
-  if (missingCritical.length > 0 && missingCritical.length <= 4) {
-    parts.push(`нет: ${missingCritical.join(", ")}`);
+  if (missingCritical.length > 0 && missingCritical.length <= 5) {
+    const labels = missingCritical.map((f) => getFieldLabel(f as FieldName));
+    parts.push(`Не хватает: ${labels.join(", ")}`);
   }
+
+  parts.push("\n/review_gnb — полная сводка");
 
   return parts.join("\n");
 }
@@ -197,14 +212,40 @@ export function buildConfirmBlockedText(report: ReviewReport): string {
 
 function formatValue(v: unknown): string {
   if (v === undefined || v === null) return "—";
-  if (typeof v === "string") return v.length > 50 ? v.slice(0, 47) + "..." : v;
+  if (typeof v === "string") return v.length > 60 ? v.slice(0, 57) + "..." : v;
   if (typeof v === "number") return String(v);
-  if (typeof v === "object" && "day" in (v as any)) {
-    const d = v as { day: number; month: string; year: number };
-    return `${d.day} ${d.month} ${d.year}`;
+  if (typeof v !== "object") return String(v);
+
+  const obj = v as Record<string, unknown>;
+
+  // DateComponents
+  if ("day" in obj && "month" in obj && "year" in obj) {
+    return `${obj.day} ${obj.month} ${obj.year}`;
   }
-  if (typeof v === "object" && "full_name" in (v as any)) {
-    return (v as { full_name: string }).full_name;
+  // Signatory
+  if ("full_name" in obj && "position" in obj) {
+    return `${obj.full_name}, ${obj.position}`;
   }
-  return JSON.stringify(v).slice(0, 50);
+  // Pipe
+  if ("mark" in obj) {
+    const pipe = obj as { mark?: string; diameter_mm?: number; quality_passport?: string };
+    const parts = [pipe.mark];
+    if (pipe.diameter_mm) parts.push(`d=${pipe.diameter_mm}`);
+    return parts.filter(Boolean).join(", ");
+  }
+  // Organization
+  if ("name" in obj && "short_name" in obj) {
+    return (obj.short_name as string) || (obj.name as string);
+  }
+  // Organization (with just name)
+  if ("name" in obj) {
+    return obj.name as string;
+  }
+
+  // Fallback: extract key values instead of raw JSON
+  const keys = Object.keys(obj).filter((k) => obj[k] != null && obj[k] !== "");
+  if (keys.length <= 3) {
+    return keys.map((k) => `${k}: ${obj[k]}`).join(", ");
+  }
+  return `(${keys.length} полей)`;
 }

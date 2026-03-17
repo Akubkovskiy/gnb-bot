@@ -165,6 +165,11 @@ export class IntakeDraftStore {
       return { updated: true, conflict: false };
     }
 
+    // Same value — silently accept without conflict
+    if (valuesEqual(existing.value, field.value)) {
+      return { updated: false, conflict: false };
+    }
+
     // Confirmed field cannot be overwritten by non-manual source
     if (existing.confirmed_by_owner) {
       field.conflict_with_existing = true;
@@ -386,4 +391,17 @@ const SOURCE_PRIORITY: Record<string, number> = {
 
 function sourcePriority(type: string): number {
   return SOURCE_PRIORITY[type] ?? 99;
+}
+
+/** Simple equality for field values — avoids false conflicts for identical data. */
+function valuesEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a == null && b == null) return true;
+  if (a == null || b == null) return false;
+  if (typeof a === "string" && typeof b === "string") return a.trim() === b.trim();
+  if (typeof a === "number" && typeof b === "number") return Math.abs(a - b) < 0.01;
+  if (typeof a === "object" && typeof b === "object") {
+    return JSON.stringify(a) === JSON.stringify(b);
+  }
+  return false;
 }

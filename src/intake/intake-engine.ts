@@ -522,9 +522,24 @@ function handleBaseConfirmation(chatId: number, input: string, stores: IntakeSto
       const inherited = applyBaseTransitionToDraft(session.draftId!, base, stores.intakeDrafts);
 
       setSession(chatId, { ...session, state: "collecting" });
+      // Build highlights from base
+      const highlights: string[] = [];
+      const s = base.signatories;
+      if (s?.sign1_customer) highlights.push(`  • Мастер: ${s.sign1_customer.full_name}`);
+      if (s?.sign2_contractor) highlights.push(`  • Подрядчик: ${s.sign2_contractor.full_name}`);
+      if (s?.tech_supervisor) highlights.push(`  • Технадзор: ${s.tech_supervisor.full_name}`);
+      if (base.pipe?.mark) highlights.push(`  • Труба: ${base.pipe.mark}`);
+
+      const highlightBlock = highlights.length > 0
+        ? `\nКлючевое:\n${highlights.join("\n")}\n`
+        : "\n";
+
       return {
         message:
-          `✅ База из ${base.gnb_number} применена (${inherited.length} полей).\n` +
+          `✅ База из ${base.gnb_number} применена.\n` +
+          `Унаследовано ${inherited.length} полей, ключевые:` +
+          highlightBlock +
+          `Полная сводка: /review_gnb\n` +
           `Присылайте: ИС PDF, даты, подписанты, паспорта.`,
         buttons: getCollectingMenu(),
       };

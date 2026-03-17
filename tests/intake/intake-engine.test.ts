@@ -227,7 +227,7 @@ describe("text intake", () => {
     goToCollecting();
     const result = handleIntakeText(CHAT_ID, "10.12.2025 - 22.12.2025 Огородный д.11", stores);
     expect(result).not.toBeNull();
-    expect(result!.message).toContain("→"); // "2→2" compact format
+    expect(result!.message).toContain("Извлечено:"); // human-friendly format
 
     const draft = stores.intakeDrafts.getByChatId(CHAT_ID);
     expect(draft!.data.start_date).toBeDefined();
@@ -375,6 +375,6 @@ describe("intake-response", () => {
       draft: stores.intakeDrafts.get(draft.id)!,
     });
     expect(msg).toContain("ИС.pdf");
-    expect(msg).toContain("5→3"); // compact: extracted→updated
+    expect(msg).toContain("Извлечено: 5"); // human-friendly stats
   });
 });
