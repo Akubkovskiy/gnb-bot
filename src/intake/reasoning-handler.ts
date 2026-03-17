@@ -43,8 +43,8 @@ export function shouldUseReasoning(input: string, regexFieldCount: number): bool
     return false;
   }
 
-  // 3. Regex found enough fields — no need for Claude
-  if (regexFieldCount >= REGEX_THRESHOLD) return false;
+  // 3. Regex found enough fields — no need for Claude (unless text is very long / complex)
+  if (regexFieldCount >= REGEX_THRESHOLD && trimmed.length < 80) return false;
 
   // 4. Looks like a lookup/question — needs Claude
   if (lower.includes("что у нас") || lower.includes("какие") || lower.includes("покажи") || lower.includes("есть ли")) return true;
@@ -56,11 +56,14 @@ export function shouldUseReasoning(input: string, regexFieldCount: number): bool
   if (lower.includes("нет") && lower.length > 5) return true; // "Стройтреста нет"
   if (/(?:мастер|технадзор|подрядчик|субподрядчик|sign)/i.test(lower)) return true;
 
-  // 7. Has cyrillic names that might be signatories — needs Claude
+  // 7. Contains signatory document markers — always Claude
+  if (/(?:НРС|идентификационный\s*номер|приказ\s*№|распоряжение\s*№|[A-ZА-Я]-\d{2}-\d{6})/i.test(lower)) return true;
+
+  // 8. Has cyrillic names that might be signatories — needs Claude
   const potentialNames = trimmed.match(/[А-ЯЁ][а-яё]{2,}/g);
   if (potentialNames && potentialNames.length > 0 && regexFieldCount < REGEX_THRESHOLD) return true;
 
-  // 8. Medium-length text with low regex yield — try Claude
+  // 9. Medium-length text with low regex yield — try Claude
   if (trimmed.length > 20 && regexFieldCount < REGEX_THRESHOLD) return true;
 
   return false;
@@ -114,6 +117,8 @@ export async function processTextWithReasoning(
         missingFields,
         callClaude,
       );
+
+      logger.info({ intent: reasoningOutput?.intent, fieldUpdates: reasoningOutput?.fieldUpdates?.length, signatoryUpdates: reasoningOutput?.signatoryUpdates?.length, summary: reasoningOutput?.summary?.slice(0, 100) }, "Reasoning output");
 
       if (reasoningOutput) {
         if (reasoningOutput.intent === "lookup_query" || reasoningOutput.intent === "question") {

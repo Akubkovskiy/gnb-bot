@@ -3,7 +3,7 @@ import { config } from "../config.js";
 
 // Корневая папка работы на Яндекс Диске
 export function getWorkRoot(): string {
-  return path.join(config.yandexDiskPath, config.workRoot);
+  return path.join(config.storageRoot, config.workRoot);
 }
 
 // Папка .gnb-memory

@@ -7,7 +7,11 @@ export const config = {
     .filter(Boolean)
     .map(Number),
 
-  yandexDiskPath: process.env.YANDEX_DISK_PATH || "C:\\Users\\kubko\\YandexDisk",
+  // Neutral storage root; legacy YANDEX_DISK_PATH is still accepted for compatibility.
+  storageRoot:
+    process.env.WORK_STORAGE_ROOT
+    || process.env.YANDEX_DISK_PATH
+    || "C:\\Users\\kubko\\YandexDisk",
   workRoot: process.env.WORK_ROOT || "Работа",
   memoryDir: process.env.MEMORY_DIR || ".gnb-memory",
 
