@@ -16,6 +16,7 @@ import { extractFromText } from "./text-extractor.js";
 import { extractDocument, mapExtractionToFields, type ClaudeCaller } from "./doc-extractor.js";
 import { buildReviewReport, summarizeBase } from "./review-builder.js";
 import { buildIntakeResponse, buildReviewText, buildConfirmBlockedText, buildMissingFieldsText } from "./intake-response.js";
+import { isSchemeAuthoritative } from "./field-policy.js";
 import { finalizeIntake } from "./finalize-intake.js";
 import { parseGnbNumber } from "../domain/formatters.js";
 import { buildDocumentReview, formatDocumentReview } from "./document-review.js";
@@ -199,11 +200,14 @@ export async function handleIntakeDocument(
   let conflicts = 0;
   const updatedDocFields: Array<{ name: any; value: unknown }> = [];
   const conflictDocFields: Array<{ name: any; currentValue: unknown; candidateValue: unknown }> = [];
+  const isScheme = result.doc_class === "executive_scheme";
   for (const field of mappedFields) {
     // Get current value before setField to show in conflict
     const currentDraft = stores.intakeDrafts.get(draft.id);
     const existingField = currentDraft?.fields.find((f) => f.field_name === field.field_name && !f.conflict_with_existing);
-    const res = stores.intakeDrafts.setField(draft.id, field);
+    // Scheme-authoritative fields auto-apply from ИС without conflict
+    const schemeAuth = isScheme && isSchemeAuthoritative(field.field_name);
+    const res = stores.intakeDrafts.setField(draft.id, field, { schemeAuthoritative: schemeAuth });
     if (res.updated) {
       updated++;
       updatedDocFields.push({ name: field.field_name, value: field.value });
@@ -235,6 +239,7 @@ export async function handleIntakeDocument(
     base,
     updatedFields: updatedDocFields,
     conflictFields: conflictDocFields,
+    allExtractedFields: mappedFields.map((f) => ({ name: f.field_name, value: f.value })),
   });
 
   // Offer naming proposal for non-trivial documents
@@ -503,8 +508,10 @@ function handleGnbNumberInput(chatId: number, input: string, stores: IntakeStore
   const draftId = draft.id;
 
   // Set identity fields
-  stores.intakeDrafts.setField(draftId, makeManualField("customer", customer!));
-  stores.intakeDrafts.setField(draftId, makeManualField("object", object!));
+  // Routing context — not confirmed, can be updated by scheme/extraction
+  stores.intakeDrafts.setField(draftId, makeRoutingField("customer", customer!));
+  stores.intakeDrafts.setField(draftId, makeRoutingField("object", object!));
+  // GNB number — confirmed by owner
   stores.intakeDrafts.setField(draftId, makeManualField("gnb_number", parsed.full));
   stores.intakeDrafts.setField(draftId, makeManualField("gnb_number_short", parsed.short));
 
@@ -681,6 +688,7 @@ function handleCollectingText(chatId: number, input: string, stores: IntakeStore
       base,
       updatedFields,
       conflictFields,
+      allExtractedFields: extraction.fields.map((f) => ({ name: f.field_name, value: f.value })),
     }),
     buttons: buildIntakeButtons(freshDraft),
   };
@@ -887,6 +895,19 @@ function makeManualField(name: string, value: unknown): ExtractedField {
     source_type: "manual_text",
     confidence: "high",
     confirmed_by_owner: true,
+    conflict_with_existing: false,
+  };
+}
+
+/** Routing field — navigation context, not confirmed, can be overridden by scheme. */
+function makeRoutingField(name: string, value: unknown): ExtractedField {
+  return {
+    field_name: name as any,
+    value,
+    source_id: "manual-identity",
+    source_type: "manual_text",
+    confidence: "high",
+    confirmed_by_owner: false,
     conflict_with_existing: false,
   };
 }

@@ -25,6 +25,8 @@ export interface IntakeResponseInput {
   updatedFields?: Array<{ name: FieldName; value: unknown }>;
   /** Conflicting field names for owner-facing display. */
   conflictFields?: Array<{ name: FieldName; currentValue: unknown; candidateValue: unknown }>;
+  /** All extracted field names + values (for "all already present" display). */
+  allExtractedFields?: Array<{ name: FieldName; value: unknown }>;
 }
 
 const DOC_CLASS_LABELS: Partial<Record<DocClass, string>> = {
@@ -63,8 +65,13 @@ export function buildIntakeResponse(input: IntakeResponseInput): string {
       parts.push(`  ...и ещё ${input.updatedFields.length - 6}`);
     }
   } else if (input.fieldsExtracted > 0 && input.fieldsUpdated === 0) {
-    // Extracted but nothing new — all already present or conflicting
-    parts.push(`Распознано ${input.fieldsExtracted} полей — все уже есть или совпадают`);
+    // Extracted but nothing new — show all recognized fields
+    parts.push(`Распознано ${input.fieldsExtracted} полей — все уже есть:`);
+    if (input.allExtractedFields && input.allExtractedFields.length > 0) {
+      for (const f of input.allExtractedFields) {
+        parts.push(`  ${getFieldLabel(f.name)}: ${formatValue(f.value)}`);
+      }
+    }
   } else if (input.fieldsExtracted > 0) {
     parts.push(`Обновлено: ${input.fieldsUpdated} из ${input.fieldsExtracted}`);
   } else {
