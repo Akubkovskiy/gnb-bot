@@ -116,6 +116,19 @@ export class IntakeDraftStore {
     writeJson(this.filePath(id), draft);
   }
 
+  updateSource(id: string, source: SourceDocument): void {
+    const draft = this.get(id);
+    if (!draft) throw new Error(`IntakeDraft ${id} not found`);
+    const idx = draft.sources.findIndex((s) => s.source_id === source.source_id);
+    if (idx >= 0) {
+      draft.sources[idx] = source;
+    } else {
+      draft.sources.push(source);
+    }
+    draft.updated_at = new Date().toISOString();
+    writeJson(this.filePath(id), draft);
+  }
+
   // === Extracted fields ===
 
   /**

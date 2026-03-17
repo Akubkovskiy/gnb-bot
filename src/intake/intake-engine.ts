@@ -18,7 +18,9 @@ import { buildIntakeResponse, buildReviewText, buildConfirmBlockedText } from ".
 import { finalizeIntake } from "./finalize-intake.js";
 import { parseGnbNumber } from "../domain/formatters.js";
 import { buildDocumentReview, formatDocumentReview } from "./document-review.js";
-import { getReusableBaseDocuments } from "./document-registry.js";
+import { getReusableBaseDocuments, buildDocumentRegistry, deriveRegistryDocument } from "./document-registry.js";
+import { buildNameProposal, applyApprovedName, validateNameProposal } from "./naming.js";
+import { evaluateDocumentCoverage, allRequiredPresent, getMissingRequired } from "./document-requirements.js";
 
 // === Session state (in-memory, per chat) ===
 
@@ -133,6 +135,10 @@ export function handleIntakeText(
       return handleCollectingText(chatId, input, stores);
     case "awaiting_review_confirmation":
       return handleReviewConfirmation(chatId, input, stores);
+    case "awaiting_name_confirmation":
+      return handleNameTextResponse(chatId, input, stores);
+    case "awaiting_name_edit":
+      return handleNameEditInput(chatId, input, stores);
     default:
       return null;
   }
@@ -185,19 +191,48 @@ export async function handleIntakeDocument(
   const base = freshDraft.base_transition_id
     ? stores.transitions.get(freshDraft.base_transition_id) ?? undefined
     : undefined;
-  return {
-    message: buildIntakeResponse({
-      docClass: result.doc_class,
-      fileName,
-      summary: result.summary,
-      fieldsExtracted: result.fields.length,
-      fieldsUpdated: updated,
-      conflictsFound: conflicts,
-      warnings: result.warnings,
-      draft: freshDraft,
-      base,
-    }),
-  };
+  const responseMsg = buildIntakeResponse({
+    docClass: result.doc_class,
+    fileName,
+    summary: result.summary,
+    fieldsExtracted: result.fields.length,
+    fieldsUpdated: updated,
+    conflictsFound: conflicts,
+    warnings: result.warnings,
+    draft: freshDraft,
+    base,
+  });
+
+  // Offer naming proposal for non-trivial documents
+  const nameable = result.doc_class !== "free_text_note" && result.doc_class !== "unknown";
+  if (nameable) {
+    const source = freshDraft.sources.find((s) => s.source_id === sourceId);
+    if (source) {
+      const regDoc = deriveRegistryDocument(source, freshDraft);
+      const proposal = buildNameProposal(regDoc);
+
+      let namingLine: string;
+      if (proposal.complete) {
+        namingLine = `\n📎 Имя: ${proposal.suggested_name}`;
+      } else {
+        namingLine = `\n📎 Имя (неполное): ${proposal.suggested_name}\n  ⚠ Не хватает: ${proposal.missing_parts.join(", ")}`;
+      }
+
+      setSession(chatId, { ...session, state: "awaiting_name_confirmation", pendingNamingDocId: sourceId });
+      return {
+        message: responseMsg + namingLine,
+        buttons: [
+          [
+            { text: "Подтвердить имя", callback_data: "intake:name_approve" },
+            { text: "Исправить", callback_data: "intake:name_edit" },
+            { text: "Пропустить", callback_data: "intake:name_skip" },
+          ],
+        ],
+      };
+    }
+  }
+
+  return { message: responseMsg };
 }
 
 /**
@@ -293,6 +328,13 @@ export function handleCallback(chatId: number, data: string, stores: IntakeStore
       return handleReview(chatId, stores);
     case "intake:show_base":
       return handleShowBase(chatId, stores);
+    case "intake:name_approve":
+      return handleNameApprove(chatId, stores);
+    case "intake:name_edit":
+      setSession(chatId, { ...session, state: "awaiting_name_edit" });
+      return { message: "Введите правильное имя файла:" };
+    case "intake:name_skip":
+      return handleNameSkip(chatId, stores);
     default:
       return null;
   }
@@ -624,6 +666,109 @@ function confirmAndFinalize(chatId: number, stores: IntakeStores): IntakeRespons
       `✅ Переход ${result.transition!.gnb_number} сохранён.\nID: ${result.transition!.id}`,
     done: true,
     transition: result.transition!,
+  };
+}
+
+// === Naming approval handlers ===
+
+function handleNameApprove(chatId: number, stores: IntakeStores): IntakeResponse {
+  const session = getSession(chatId);
+  const docId = session.pendingNamingDocId;
+  if (!docId || !session.draftId) {
+    setSession(chatId, { ...session, state: "collecting", pendingNamingDocId: undefined });
+    return { message: "Нет документа для подтверждения. Продолжаем сбор." };
+  }
+
+  const draft = stores.intakeDrafts.get(session.draftId);
+  if (!draft) {
+    clearSession(chatId);
+    return { message: "Черновик не найден." };
+  }
+
+  // Find the registry doc in sources and build proposal
+  const source = draft.sources.find((s) => s.source_id === docId);
+  if (!source) {
+    setSession(chatId, { ...session, state: "collecting", pendingNamingDocId: undefined });
+    return { message: "Документ не найден. Продолжаем сбор." };
+  }
+
+  const regDoc = deriveRegistryDocument(source, draft);
+  const proposal = buildNameProposal(regDoc);
+
+  // Store approved name in source metadata
+  source.approved_name = proposal.suggested_name;
+  stores.intakeDrafts.updateSource(session.draftId, source);
+
+  setSession(chatId, { ...session, state: "collecting", pendingNamingDocId: undefined });
+  return {
+    message: `✅ Имя подтверждено: ${proposal.suggested_name}`,
+    buttons: getCollectingMenu(),
+  };
+}
+
+function handleNameSkip(chatId: number, stores: IntakeStores): IntakeResponse {
+  const session = getSession(chatId);
+  setSession(chatId, { ...session, state: "collecting", pendingNamingDocId: undefined });
+  return {
+    message: "Пропущено. Имя можно подтвердить позже через /review_gnb.",
+    buttons: getCollectingMenu(),
+  };
+}
+
+function handleNameTextResponse(chatId: number, input: string, stores: IntakeStores): IntakeResponse {
+  const lower = input.toLowerCase();
+  if (lower === "да" || lower === "подтвердить" || lower === "ок") {
+    return handleNameApprove(chatId, stores);
+  }
+  if (lower === "нет" || lower === "пропустить") {
+    return handleNameSkip(chatId, stores);
+  }
+  if (lower === "исправить" || lower === "изменить") {
+    const session = getSession(chatId);
+    setSession(chatId, { ...session, state: "awaiting_name_edit" });
+    return { message: "Введите правильное имя файла:" };
+  }
+  return {
+    message: "Подтвердить имя? (да / исправить / пропустить)",
+    buttons: [
+      [
+        { text: "Подтвердить", callback_data: "intake:name_approve" },
+        { text: "Исправить", callback_data: "intake:name_edit" },
+        { text: "Пропустить", callback_data: "intake:name_skip" },
+      ],
+    ],
+  };
+}
+
+function handleNameEditInput(chatId: number, input: string, stores: IntakeStores): IntakeResponse {
+  const session = getSession(chatId);
+  const docId = session.pendingNamingDocId;
+  if (!docId || !session.draftId) {
+    setSession(chatId, { ...session, state: "collecting", pendingNamingDocId: undefined });
+    return { message: "Нет документа для переименования. Продолжаем сбор." };
+  }
+
+  const validation = validateNameProposal(input);
+  if (!validation.valid) {
+    return { message: `❌ ${validation.reason}. Попробуйте ещё раз:` };
+  }
+
+  const draft = stores.intakeDrafts.get(session.draftId);
+  if (!draft) {
+    clearSession(chatId);
+    return { message: "Черновик не найден." };
+  }
+
+  const source = draft.sources.find((s) => s.source_id === docId);
+  if (source) {
+    source.approved_name = input.trim();
+    stores.intakeDrafts.updateSource(session.draftId, source);
+  }
+
+  setSession(chatId, { ...session, state: "collecting", pendingNamingDocId: undefined });
+  return {
+    message: `✅ Имя установлено: ${input.trim()}`,
+    buttons: getCollectingMenu(),
   };
 }
 

@@ -51,6 +51,8 @@ export interface SourceDocument {
   received_at: string;        // ISO
   parse_status: "pending" | "parsed" | "failed";
   short_summary?: string;
+  /** Approved canonical name (set after naming approval flow). */
+  approved_name?: string;
 }
 
 // === Extracted field ===
