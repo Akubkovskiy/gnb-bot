@@ -344,6 +344,17 @@ export function hasActiveIntake(chatId: number): boolean {
   return session.state !== "idle";
 }
 
+/** Get current session info for external async handlers. */
+export function getSessionInfo(chatId: number): { state: IntakeState; draftId?: string; objectId?: string; object?: string } {
+  const s = getSession(chatId);
+  const objectId = s.customer && s.object ? `${slugify(s.customer)}-${slugify(s.object)}` : undefined;
+  return { state: s.state, draftId: s.draftId, objectId, object: s.object };
+}
+
+function slugify(s: string): string {
+  return s.toLowerCase().replace(/[«»"']/g, "").replace(/[^a-zа-яё0-9]+/gi, "-").replace(/^-|-$/g, "") || "unknown";
+}
+
 /**
  * Handle inline button callback.
  */

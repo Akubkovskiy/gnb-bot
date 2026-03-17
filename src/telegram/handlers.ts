@@ -23,9 +23,11 @@ import {
   cancelIntake,
   hasActiveIntake,
   handleCallback,
+  getSessionInfo,
 } from "../intake/intake-engine.js";
 import type { IntakeResponse, InlineButton } from "../intake/intake-types.js";
 import { InlineKeyboard } from "grammy";
+import { processTextWithReasoning } from "../intake/reasoning-handler.js";
 
 const CLAUDE_SYSTEM = fs.readFileSync(
   path.join(process.cwd(), "CLAUDE.md"),
@@ -407,6 +409,25 @@ export function registerHandlers(bot: Bot): void {
 
     // Check for active intake session
     try {
+      const sessionInfo = getSessionInfo(chatId);
+
+      // Collecting state → async reasoning-first path
+      if (sessionInfo.state === "collecting" && sessionInfo.draftId) {
+        const memDir = getMemoryDir();
+        const result = await processTextWithReasoning(
+          chatId, text, sessionInfo.draftId, stores, memDir,
+          sessionInfo.objectId, askClaude,
+        );
+        if (result) {
+          await sendIntakeResponse(ctx, {
+            ...result.response,
+            buttons: result.response.buttons,
+          });
+          return;
+        }
+      }
+
+      // Other states (customer, object, gnb_number, etc.) → sync handler
       const intakeResult = handleIntakeText(chatId, text, stores);
       if (intakeResult) {
         await sendIntakeResponse(ctx, intakeResult);
