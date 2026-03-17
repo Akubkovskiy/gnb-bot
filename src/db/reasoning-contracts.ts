@@ -30,8 +30,10 @@ export interface IntakeReasoningInput {
     mentionedPeople?: Array<{
       personId: string;
       fullName: string;
+      isActive?: boolean;
       position?: string | null;
       org?: string;
+      activeRoles?: string[];
       currentDocs?: Array<{ docType: string; docNumber?: string | null; docDate?: string | null }>;
     }>;
     objectProfile?: {

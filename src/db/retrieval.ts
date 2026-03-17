@@ -15,8 +15,10 @@ type Db = BetterSQLite3Database<typeof s>;
 
 export interface PersonProfile {
   person: typeof s.people.$inferSelect;
+  isActive: boolean;
   org?: typeof s.organizations.$inferSelect;
   currentDocs: Array<typeof s.personDocuments.$inferSelect>;
+  activeRoles: string[];
   roleHistory: Array<{
     role: string;
     objectName?: string;
@@ -73,7 +75,9 @@ export function findPersonByName(db: Db, query: string): PersonProfile[] {
     .where(or(like(s.people.surname, pattern), like(s.people.full_name, pattern)))
     .all();
 
-  return rows.map((person) => buildPersonProfile(db, person));
+  return rows
+    .map((person) => buildPersonProfile(db, person))
+    .sort((a, b) => scorePersonProfile(b) - scorePersonProfile(a));
 }
 
 /**
@@ -346,6 +350,10 @@ function buildPersonProfile(db: Db, person: typeof s.people.$inferSelect): Perso
     .where(eq(s.personRoleAssignments.person_id, person.id))
     .all();
 
+  const activeRoles = roleAssignments
+    .filter((ra) => !ra.removed_at)
+    .map((ra) => ra.role);
+
   const roleHistory = roleAssignments.map((ra) => {
     const obj = ra.object_id
       ? db.select().from(s.objects).where(eq(s.objects.id, ra.object_id)).get()
@@ -377,5 +385,24 @@ function buildPersonProfile(db: Db, person: typeof s.people.$inferSelect): Perso
     };
   });
 
-  return { person, org, currentDocs, roleHistory, transitionHistory };
+  return {
+    person,
+    isActive: person.is_active === 1,
+    org,
+    currentDocs,
+    activeRoles,
+    roleHistory,
+    transitionHistory,
+  };
+}
+
+function scorePersonProfile(profile: PersonProfile): number {
+  let score = 0;
+
+  if (profile.isActive) score += 100;
+  score += profile.activeRoles.length * 10;
+  score += profile.currentDocs.length * 5;
+  score += profile.transitionHistory.length;
+
+  return score;
 }
