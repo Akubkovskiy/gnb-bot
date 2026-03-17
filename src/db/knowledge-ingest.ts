@@ -14,7 +14,7 @@ import { createRepos } from "./repositories.js";
 import { logger } from "../logger.js";
 
 type Db = BetterSQLite3Database<typeof schema>;
-type ClaudeCaller = (prompt: string, opts?: { systemPrompt?: string }) => Promise<string>;
+type ClaudeCaller = (prompt: string, opts?: { systemPrompt?: string; model?: string }) => Promise<string>;
 
 /**
  * Process a standalone document for knowledge base ingestion.
@@ -68,7 +68,8 @@ export async function processKnowledgeIngest(
   const prompt = buildIngestPrompt(input);
   let rawResponse: string;
   try {
-    rawResponse = await callClaude(prompt);
+    const { config } = await import("../config.js");
+    rawResponse = await callClaude(prompt, { model: config.claudeReasoningModel });
   } catch (err) {
     logger.error({ err }, "Knowledge ingest Claude call failed");
     return null;

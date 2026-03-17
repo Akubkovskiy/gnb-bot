@@ -1,30 +1,27 @@
 /**
- * Reasoning orchestrator — bridges retrieval context → Claude skill → draft updates.
+ * Reasoning orchestrator - bridges retrieval context -> Claude -> draft updates.
  *
- * This is CODE that calls Claude with structured context.
- * The skill (prompt) reasons, code validates and applies the result.
+ * This is CODE that assembles structured context for Claude.
+ * Claude returns JSON, then code validates and applies it.
  */
 
-import type { IntakeReasoningInput, IntakeReasoningOutput, IntentType } from "./reasoning-contracts.js";
-import type { PersonProfile, ObjectProfile, DraftKnowledgeContext } from "./retrieval.js";
-import { findPersonByName, getObjectProfile, getBaseKnowledgeForDraft } from "./retrieval.js";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type * as schema from "./schema.js";
+import type { IntakeReasoningInput, IntakeReasoningOutput, IntentType } from "./reasoning-contracts.js";
+import type { PersonProfile } from "./retrieval.js";
+import { getBaseKnowledgeForDraft } from "./retrieval.js";
 import { logger } from "../logger.js";
 
 type Db = BetterSQLite3Database<typeof schema>;
-type ClaudeCaller = (prompt: string, opts?: { systemPrompt?: string }) => Promise<string>;
-
-// === Intake reasoning ===
+type ClaudeCaller = (prompt: string, opts?: { systemPrompt?: string; model?: string }) => Promise<string>;
 
 /**
  * Process free text from owner through Claude reasoning with DB context.
  *
- * 1. Extract mentioned names from text (simple heuristic)
- * 2. Run retrieval for mentioned entities
- * 3. Build structured input for Claude
- * 4. Call Claude with intake-reasoning skill prompt
- * 5. Parse and validate output
+ * 1. Extract mentioned names from text with a cheap heuristic
+ * 2. Build retrieval context from DB
+ * 3. Call Claude with a structured prompt
+ * 4. Parse and validate JSON response
  */
 export async function processIntakeText(
   db: Db,
@@ -34,86 +31,78 @@ export async function processIntakeText(
   missingFields: string[],
   callClaude: ClaudeCaller,
 ): Promise<IntakeReasoningOutput | null> {
-  // Step 1: Extract mentioned names (simple heuristic — look for Cyrillic surnames)
   const mentionedNames = extractMentionedNames(message);
-
-  // Step 2: Retrieval
   const context = getBaseKnowledgeForDraft(db, objectId, mentionedNames);
 
-  // Step 3: Build structured input
   const input: IntakeReasoningInput = {
     message,
     draftSummary,
     retrievalContext: {
       mentionedPeople: context.mentionedPeople.map(personToContext),
-      objectProfile: context.object ? {
-        shortName: context.object.object.short_name,
-        officialName: context.object.object.official_name,
-        lastGnb: context.object.lastFinalized?.gnb_number,
-        lastSignatories: context.object.lastSignatories,
-      } : undefined,
+      objectProfile: context.object
+        ? {
+            shortName: context.object.object.short_name,
+            officialName: context.object.object.official_name,
+            lastGnb: context.object.lastFinalized?.gnb_number,
+            lastSignatories: context.object.lastSignatories,
+          }
+        : undefined,
     },
     missingFields,
   };
 
-  // Step 4: Call Claude with skill prompt
-  const skillPrompt = buildIntakeReasoningPrompt(input);
+  const prompt = buildIntakeReasoningPrompt(input);
+
   let rawResponse: string;
   try {
-    rawResponse = await callClaude(skillPrompt);
+    const { config } = await import("../config.js");
+    rawResponse = await callClaude(prompt, { model: config.claudeReasoningModel });
   } catch (err) {
     logger.error({ err }, "Claude reasoning call failed");
     return null;
   }
 
-  // Step 5: Parse and validate
   return parseReasoningOutput(rawResponse);
 }
 
-// === Prompt builders ===
-// NOTE: These inline prompts are the actual runtime prompts.
-// .claude/skills/*/SKILL.md files are reference specs for the reasoning contracts.
-// They define the expected behavior but are NOT read at runtime by the bot.
-// When updating behavior, update BOTH the inline prompt AND the SKILL.md.
-
 function buildIntakeReasoningPrompt(input: IntakeReasoningInput): string {
-  return `Ты — GNB intake reasoning engine. Анализируешь сообщение owner'а и возвращаешь structured JSON.
+  return `You are the GNB intake reasoning engine.
+Analyze the owner's message and return valid JSON only.
 
-СООБЩЕНИЕ OWNER:
+OWNER MESSAGE:
 "${input.message}"
 
-ТЕКУЩИЙ DRAFT:
+CURRENT DRAFT:
 ${JSON.stringify(input.draftSummary, null, 2)}
 
-КОНТЕКСТ ИЗ БАЗЫ:
+RETRIEVAL CONTEXT FROM DB:
 ${JSON.stringify(input.retrievalContext, null, 2)}
 
-НЕ ХВАТАЕТ ПОЛЕЙ:
-${input.missingFields.join(", ") || "все обязательные заполнены"}
+MISSING REQUIRED FIELDS:
+${input.missingFields.join(", ") || "all required fields are already filled"}
 
-ПРАВИЛА:
-- Определи intent: field_update, signatory_assignment, lookup_query, reuse_request, manual_override, absence_declaration, confirmation, question, unknown
-- Извлеки field updates с confidence
-- Если упомянут человек из базы — используй его данные (personId, role)
-- Если человек НЕ в базе — пометь source: "owner_text", confidence: "medium"
-- НЕ выдумывай данные
-- "Стройтреста нет" = absence_declaration, sign3 = null
-- "технадзор Гайдуков" = signatory_assignment, role: "tech", personId из базы
+RULES:
+- Determine one intent: field_update, signatory_assignment, lookup_query, reuse_request, manual_override, absence_declaration, confirmation, question, unknown.
+- Extract field updates with confidence.
+- If a mentioned person is found in DB and isActive=true, you may use that personId.
+- If a mentioned person is found in DB but isActive=false, do not silently assign them; ask the owner whether that inactive person should still be used.
+- If multiple people match the same surname, prefer the active person with current docs or active roles. If still ambiguous, ask the owner.
+- If a person is not found in DB, use action "needs_manual" and include newPersonData when possible.
+- Never invent data not supported by the message or DB context.
+- "Стройтреста нет" usually means absence_declaration and removal of optional subcontractor/sign3 context if relevant.
+- "технадзор Гайдуков" usually means signatory_assignment for role "tech".
 
-ФОРМАТ ОТВЕТА (только JSON, без markdown):
+RETURN ONLY VALID JSON, NO MARKDOWN:
 {
   "intent": "...",
-  "fieldUpdates": [{ "fieldName": "...", "value": ..., "confidence": "high", "source": "..." }],
+  "fieldUpdates": [{ "fieldName": "...", "value": "...", "confidence": "high", "source": "owner_text" }],
   "signatoryUpdates": [{ "role": "...", "personId": "...", "action": "assign" }],
   "questionsForOwner": [],
   "summary": "..."
 }`;
 }
 
-// === Output parsing ===
-
 function parseReasoningOutput(raw: string): IntakeReasoningOutput | null {
-  // Extract JSON from response (may be wrapped in markdown)
   const jsonMatch = raw.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
     logger.warn({ raw: raw.slice(0, 200) }, "Could not find JSON in reasoning output");
@@ -123,13 +112,11 @@ function parseReasoningOutput(raw: string): IntakeReasoningOutput | null {
   try {
     const parsed = JSON.parse(jsonMatch[0]);
 
-    // Validate required fields
     if (!parsed.intent || !parsed.summary) {
       logger.warn({ parsed }, "Reasoning output missing required fields");
       return null;
     }
 
-    // Normalize
     return {
       intent: validateIntent(parsed.intent),
       fieldUpdates: Array.isArray(parsed.fieldUpdates) ? parsed.fieldUpdates : [],
@@ -145,31 +132,55 @@ function parseReasoningOutput(raw: string): IntakeReasoningOutput | null {
 
 function validateIntent(intent: string): IntentType {
   const valid: IntentType[] = [
-    "field_update", "signatory_assignment", "lookup_query", "reuse_request",
-    "manual_override", "absence_declaration", "confirmation", "question", "unknown",
+    "field_update",
+    "signatory_assignment",
+    "lookup_query",
+    "reuse_request",
+    "manual_override",
+    "absence_declaration",
+    "confirmation",
+    "question",
+    "unknown",
   ];
+
   return valid.includes(intent as IntentType) ? (intent as IntentType) : "unknown";
 }
 
-// === Helpers ===
-
 /**
- * Simple heuristic to extract potential surnames from Russian text.
- * Looks for capitalized Cyrillic words that could be surnames.
+ * Cheap heuristic to extract likely surnames from Russian text.
+ * Surname matching is only the search entry point; actual decisions must use DB status.
  */
 function extractMentionedNames(text: string): string[] {
   const names: string[] = [];
-  // Match capitalized Cyrillic words (potential surnames)
   const matches = text.match(/[А-ЯЁ][а-яё]{2,}/g);
   if (!matches) return names;
 
-  // Filter out common non-name words
   const stopWords = new Set([
-    "Мастер", "Технадзор", "Подрядчик", "Субподрядчик", "Заказчик",
-    "Начальник", "Главный", "Специалист", "Стройтрест", "Стройтреста",
-    "Москва", "Москвы", "Адрес", "Объект", "Проект", "Труба",
-    "Паспорт", "Сертификат", "Приказ", "Распоряжение", "Участка",
-    "Строительство", "Выполнение", "Прокладке", "Резервирование",
+    "Мастер",
+    "Технадзор",
+    "Подрядчик",
+    "Субподрядчик",
+    "Заказчик",
+    "Начальник",
+    "Главный",
+    "Специалист",
+    "Стройтрест",
+    "Стройтреста",
+    "Москва",
+    "Москвы",
+    "Адрес",
+    "Объект",
+    "Проект",
+    "Труба",
+    "Паспорт",
+    "Сертификат",
+    "Приказ",
+    "Распоряжение",
+    "Участка",
+    "Строительство",
+    "Выполнение",
+    "Прокладке",
+    "Резервирование",
   ]);
 
   for (const word of matches) {
@@ -185,8 +196,10 @@ function personToContext(p: PersonProfile) {
   return {
     personId: p.person.id,
     fullName: p.person.full_name,
+    isActive: p.isActive,
     position: p.person.position,
     org: p.org?.short_name,
+    activeRoles: p.activeRoles,
     currentDocs: p.currentDocs.map((d) => ({
       docType: d.doc_type,
       docNumber: d.doc_number,

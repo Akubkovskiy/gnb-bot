@@ -53,6 +53,7 @@ interface AskClaudeOptions {
   systemPrompt?: string;
   files?: string[];       // Пути к файлам (изображения, PDF)
   timeoutMs?: number;
+  model?: string;         // Override model (e.g. "claude-haiku-4-5" for lightweight reasoning)
 }
 
 // Ответ Claude CLI в формате json
@@ -81,8 +82,9 @@ export async function askClaude(prompt: string, options: AskClaudeOptions = {}):
     args.push("--append-system-prompt", systemPrompt);
   }
 
-  if (config.claudeModel) {
-    args.push("--model", config.claudeModel);
+  const modelToUse = options.model ?? config.claudeModel;
+  if (modelToUse) {
+    args.push("--model", modelToUse);
   }
 
   // Передача файлов — добавляем директорию с файлами через --add-dir

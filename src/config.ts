@@ -13,4 +13,6 @@ export const config = {
 
   claudeCliPath: process.env.CLAUDE_CLI_PATH || "",
   claudeModel: process.env.CLAUDE_MODEL || "claude-sonnet-4-5",
+  /** Lightweight model for reasoning (intent, extraction, structured JSON). */
+  claudeReasoningModel: process.env.CLAUDE_REASONING_MODEL || "claude-haiku-4-5",
 } as const;
