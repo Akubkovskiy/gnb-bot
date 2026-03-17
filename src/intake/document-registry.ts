@@ -51,6 +51,8 @@ export function buildDocumentRegistry(draft: IntakeDraft): DocumentRegistry {
   const documents: RegistryDocument[] = [];
 
   for (const source of draft.sources) {
+    // Skip free-text notes — only real files count as registry documents
+    if (source.doc_class === "free_text_note") continue;
     const doc = deriveRegistryDocument(source, draft);
     documents.push(doc);
   }

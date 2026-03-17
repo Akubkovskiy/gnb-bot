@@ -530,7 +530,21 @@ function handleObjectInput(chatId: number, input: string, stores: IntakeStores):
 
 function handleGnbNumberInput(chatId: number, input: string, stores: IntakeStores): IntakeResponse {
   const session = getSession(chatId);
-  const { customer, object } = session;
+  let { customer, object } = session;
+
+  // Normalize customer name via DB if raw input was stored (JSON store miss on VPS)
+  if (customer) {
+    const jsonFound = stores.customers.findByNameOrAlias(customer);
+    if (jsonFound) {
+      customer = jsonFound.name;
+    } else {
+      try {
+        const db = getDb(getMemoryDir());
+        const dbCustomer = dbFindCustomer(db, customer);
+        if (dbCustomer) customer = dbCustomer.name;
+      } catch { /* DB not available */ }
+    }
+  }
 
   // Parse GNB number
   const parsed = parseGnbNumber(input);

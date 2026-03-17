@@ -77,7 +77,7 @@ export function buildDocumentReview(
 export function formatDocumentReview(summary: DocumentReviewSummary): string {
   const lines: string[] = [];
 
-  lines.push(`📁 Документы: ${summary.total_documents} шт. (${summary.required_present}/${summary.required_total} обяз.)"`);
+  lines.push(`📁 Документы: ${summary.total_documents} шт. (${summary.required_present}/${summary.required_total} обяз.)`);
 
   if (summary.inherited_count > 0) {
     lines.push(`  ✅ Унаследовано: ${summary.inherited_count}`);
