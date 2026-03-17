@@ -97,6 +97,15 @@ export function buildIntakeResponse(input: IntakeResponseInput): string {
   // Compact progress line
   parts.push(`\n✅ ${requiredPresent}/${requiredTotal} обязательных полей`);
 
+  // Show what's still missing (compact, Russian labels)
+  const missingCritical = REQUIRED_FIELDS.filter(
+    (r) => !input.draft.fields.some((f) => f.field_name === r && !f.conflict_with_existing),
+  );
+  if (missingCritical.length > 0) {
+    const labels = missingCritical.map((f) => getFieldLabel(f as FieldName));
+    parts.push(`Не хватает: ${labels.join(", ")}`);
+  }
+
   return parts.join("\n");
 }
 

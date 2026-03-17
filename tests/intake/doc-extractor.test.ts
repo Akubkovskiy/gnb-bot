@@ -250,7 +250,9 @@ describe("mapExtractionToFields", () => {
 
     expect(fields.find((f) => f.field_name === "address")?.value).toContain("Огородный");
     expect(fields.find((f) => f.field_name === "project_number")?.value).toBe("ШФ-123");
-    expect(fields.find((f) => f.field_name === "customer")?.value).toContain("ОЭК");
+    const custOrg = fields.find((f) => f.field_name === "organizations.customer");
+    expect(custOrg).toBeDefined();
+    expect((custOrg!.value as any).name).toContain("ОЭК");
   });
 
   it("maps passport pipe mark with _merge flag", () => {
@@ -279,7 +281,9 @@ describe("mapExtractionToFields", () => {
     const fields = mapExtractionToFields(extraction, "src-3");
 
     expect(fields.find((f) => f.field_name === "gnb_number")?.value).toBe("ЗП № 3");
-    expect(fields.find((f) => f.field_name === "customer")?.value).toBe("Крафт");
+    const custOrg2 = fields.find((f) => f.field_name === "organizations.customer");
+    expect(custOrg2).toBeDefined();
+    expect((custOrg2!.value as any).name).toBe("Крафт");
     expect(fields.find((f) => f.field_name === "gnb_params.plan_length")?.value).toBe(61.7);
   });
 
