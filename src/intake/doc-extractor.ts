@@ -367,7 +367,10 @@ export function parseKeyValuePairs(text: string): RawExtractionPair[] {
   const pairs: RawExtractionPair[] = [];
   const lines = text.split("\n");
 
-  for (const line of lines) {
+  for (let line of lines) {
+    // Strip markdown list markers: "- ", "* ", "• ", "1. "
+    line = line.replace(/^\s*[-*•]\s+/, "").replace(/^\s*\d+\.\s+/, "");
+
     const match = line.match(/^\s*([A-ZА-ЯЁ_][A-ZА-ЯЁa-zа-яё0-9_\s]*?)\s*[:=—]\s*(.+)$/);
     if (match) {
       const key = match[1].trim().toUpperCase().replace(/\s+/g, "_");
