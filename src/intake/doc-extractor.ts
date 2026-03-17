@@ -18,6 +18,7 @@ import type {
 } from "./extraction-types.js";
 import type { DocClass, FieldConfidence, SourceType, ExtractedField, FieldName } from "./intake-types.js";
 import { classify, classifyByFilename, classifyText, sourceTypeFromExt } from "./doc-classifier.js";
+import { parseDate } from "../domain/formatters.js";
 
 // === Types for injection ===
 
@@ -117,14 +118,19 @@ export function buildExtractionPrompt(
   materialSubtype?: MaterialSubtype,
 ): string {
   const absPath = path.resolve(filePath);
-  const base = `Прочитай файл ${absPath} и извлеки данные.\n\n`;
+  const ext = path.extname(filePath).toLowerCase();
+  const isExcel = ext === ".xls" || ext === ".xlsx";
+  const fileHint = isExcel
+    ? `Прочитай Excel файл ${absPath}. Используй инструмент Read или Bash (python/openpyxl) чтобы прочитать содержимое.\n\n`
+    : `Прочитай файл ${absPath} и извлеки данные.\n\n`;
+  const base = fileHint;
 
   const rules = `ПРАВИЛА:
 - Извлекай ТОЛЬКО то, что явно написано в документе.
 - НЕ додумывай номера, даты, ФИО, адреса, шифры, НРС.
 - Если значение не найдено — напиши "не найдено".
 - Если значение нечёткое — добавь "(?)".
-- Формат ответа: каждое поле на новой строке "КЛЮЧ: значение".\n\n`;
+- Формат ответа: СТРОГО каждое поле на новой строке "КЛЮЧ: значение". Без markdown заголовков, без таблиц.\n\n`;
 
   switch (docClass) {
     case "executive_scheme":
@@ -179,22 +185,29 @@ L_ПРОФИЛЬ: длина профильная (метры)
     case "prior_aosr":
     case "prior_internal_act":
     case "summary_excel":
-      return base + rules + `Тип документа: ранее подготовленный акт / АОСР / Excel.
-Извлеки все доступные данные:
-НОМЕР_ГНБ: номер перехода
-ОБЪЕКТ: объект
-АДРЕС: адрес
-ЗАКАЗЧИК: заказчик
-ПОДРЯДЧИК: подрядчик
-ШИФР_ПРОЕКТА: шифр проекта
-ДАТЫ: даты работ
-ПОДПИСАНТ_1: мастер РЭС (ФИО, должность, организация)
-ПОДПИСАНТ_2: подрядчик (ФИО, должность, организация)
-ПОДПИСАНТ_3: субподрядчик (ФИО, должность, организация)
-ПОДПИСАНТ_ТН: технадзор (ФИО, должность, организация)
-МАРКА_ТРУБЫ: марка трубы
-L_ПЛАН: длина плановая
-L_ПРОФИЛЬ: длина профильная`;
+      return base + rules + `Тип документа: ранее подготовленный акт ГНБ / АОСР / Excel с данными перехода.
+Это Excel/PDF с данными существующего ГНБ-перехода. Прочитай ВСЕ листы и извлеки:
+НОМЕР_ГНБ: номер перехода (например "ЗП № 5-5")
+ЗАГОЛОВОК: наименование объекта / title line
+ОБЪЕКТ: название стройки / объекта
+АДРЕС: адрес работ
+ЗАКАЗЧИК: организация-заказчик (полное название)
+ПОДРЯДЧИК: организация-подрядчик (полное название)
+ПРОЕКТИРОВЩИК: проектная организация
+ИСПОЛНИТЕЛЬ: исполнитель работ
+ШИФР_ПРОЕКТА: шифр/номер проекта
+ДАТА_НАЧАЛА: дата начала работ
+ДАТА_ОКОНЧАНИЯ: дата окончания работ
+ПОДПИСАНТ_1: представитель заказчика / мастер РЭС — ФИО, должность, организация
+ПОДПИСАНТ_2: подрядчик — ФИО, должность, организация, НРС, приказ
+ПОДПИСАНТ_3: субподрядчик — ФИО, должность, организация, приказ (если есть)
+ПОДПИСАНТ_ТН: технадзор — ФИО, должность, организация, НРС, распоряжение
+МАРКА_ТРУБЫ: марка/тип трубы
+L_ПЛАН: длина плановая (метры)
+L_ПРОФИЛЬ: длина профильная (метры)
+КОЛ_ТРУБ: количество труб
+ДИАМЕТР_СКВАЖИНЫ: диаметр скважины (мм)
+КОНФИГУРАЦИЯ: конфигурация перехода`;
 
     default:
       // For photo_of_doc, unknown, materials, etc.
@@ -408,6 +421,16 @@ function parseNumericIfPossible(key: string, value: string): string | number {
   return value;
 }
 
+/** Safely parse date string (DD.MM.YYYY) to DateComponents. Returns string if parse fails. */
+function safeParseDateValue(v: unknown): unknown {
+  const s = String(v).trim();
+  try {
+    return parseDate(s);
+  } catch {
+    return s; // Keep as string if parse fails
+  }
+}
+
 function buildSummary(
   docClass: DocClass,
   fields: ExtractionField[],
@@ -473,30 +496,59 @@ const FIELD_MAPPING: Partial<Record<DocClass, Record<string, FieldMapEntry>>> = 
   },
   prior_internal_act: {
     НОМЕР_ГНБ: { fieldName: "gnb_number" },
-    ОБЪЕКТ: { fieldName: "object" },
+    ЗАГОЛОВОК: { fieldName: "title_line" },
+    ОБЪЕКТ: { fieldName: "object_name" },
     АДРЕС: { fieldName: "address" },
     ЗАКАЗЧИК: { fieldName: "customer" },
+    ПОДРЯДЧИК: { fieldName: "executor" },
+    ПРОЕКТИРОВЩИК: { fieldName: "executor" },
+    ИСПОЛНИТЕЛЬ: { fieldName: "executor" },
     ШИФР_ПРОЕКТА: { fieldName: "project_number" },
+    ДАТА_НАЧАЛА: { fieldName: "start_date", transform: safeParseDateValue },
+    ДАТА_ОКОНЧАНИЯ: { fieldName: "end_date", transform: safeParseDateValue },
     L_ПЛАН: { fieldName: "gnb_params.plan_length" },
     L_ПРОФИЛЬ: { fieldName: "gnb_params.profile_length" },
+    КОЛ_ТРУБ: { fieldName: "gnb_params.pipe_count" },
+    ДИАМЕТР_СКВАЖИНЫ: { fieldName: "gnb_params.drill_diameter" },
+    КОНФИГУРАЦИЯ: { fieldName: "gnb_params.configuration" },
     МАРКА_ТРУБЫ: { fieldName: "pipe", transform: (v) => ({ _merge: true, mark: String(v) }) },
   },
   prior_aosr: {
     НОМЕР_ГНБ: { fieldName: "gnb_number" },
-    ОБЪЕКТ: { fieldName: "object" },
+    ЗАГОЛОВОК: { fieldName: "title_line" },
+    ОБЪЕКТ: { fieldName: "object_name" },
     АДРЕС: { fieldName: "address" },
     ЗАКАЗЧИК: { fieldName: "customer" },
+    ПОДРЯДЧИК: { fieldName: "executor" },
+    ПРОЕКТИРОВЩИК: { fieldName: "executor" },
+    ИСПОЛНИТЕЛЬ: { fieldName: "executor" },
     ШИФР_ПРОЕКТА: { fieldName: "project_number" },
+    ДАТА_НАЧАЛА: { fieldName: "start_date", transform: safeParseDateValue },
+    ДАТА_ОКОНЧАНИЯ: { fieldName: "end_date", transform: safeParseDateValue },
     L_ПЛАН: { fieldName: "gnb_params.plan_length" },
     L_ПРОФИЛЬ: { fieldName: "gnb_params.profile_length" },
+    КОЛ_ТРУБ: { fieldName: "gnb_params.pipe_count" },
+    ДИАМЕТР_СКВАЖИНЫ: { fieldName: "gnb_params.drill_diameter" },
+    КОНФИГУРАЦИЯ: { fieldName: "gnb_params.configuration" },
+    МАРКА_ТРУБЫ: { fieldName: "pipe", transform: (v) => ({ _merge: true, mark: String(v) }) },
   },
   summary_excel: {
     НОМЕР_ГНБ: { fieldName: "gnb_number" },
-    ОБЪЕКТ: { fieldName: "object" },
+    ЗАГОЛОВОК: { fieldName: "title_line" },
+    ОБЪЕКТ: { fieldName: "object_name" },
     АДРЕС: { fieldName: "address" },
     ЗАКАЗЧИК: { fieldName: "customer" },
+    ПОДРЯДЧИК: { fieldName: "executor" },
+    ПРОЕКТИРОВЩИК: { fieldName: "executor" },
+    ИСПОЛНИТЕЛЬ: { fieldName: "executor" },
     ШИФР_ПРОЕКТА: { fieldName: "project_number" },
+    ДАТА_НАЧАЛА: { fieldName: "start_date", transform: safeParseDateValue },
+    ДАТА_ОКОНЧАНИЯ: { fieldName: "end_date", transform: safeParseDateValue },
     L_ПЛАН: { fieldName: "gnb_params.plan_length" },
     L_ПРОФИЛЬ: { fieldName: "gnb_params.profile_length" },
+    КОЛ_ТРУБ: { fieldName: "gnb_params.pipe_count" },
+    ДИАМЕТР_СКВАЖИНЫ: { fieldName: "gnb_params.drill_diameter" },
+    КОНФИГУРАЦИЯ: { fieldName: "gnb_params.configuration" },
+    МАРКА_ТРУБЫ: { fieldName: "pipe", transform: (v) => ({ _merge: true, mark: String(v) }) },
   },
 };

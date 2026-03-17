@@ -69,7 +69,7 @@ interface ClaudeJsonResult {
  * Использует --output-format json (одиночный результат).
  */
 export async function askClaude(prompt: string, options: AskClaudeOptions = {}): Promise<string> {
-  const { systemPrompt, files, timeoutMs = 120_000 } = options;
+  const { systemPrompt, files, timeoutMs = 180_000 } = options;
   const exe = getClaudePath();
 
   const args = [
