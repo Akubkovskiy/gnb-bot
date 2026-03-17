@@ -24,7 +24,7 @@ export const FIELD_POLICIES: ExtendedFieldPolicy[] = [
   // === Stable: almost always inherited ===
   { fieldName: "organizations.customer", volatility: "stable", label: "Организация-заказчик" },
   { fieldName: "organizations.contractor", volatility: "stable", label: "Организация-подрядчик" },
-  { fieldName: "organizations.designer", volatility: "stable", label: "Организация-проектировщик" },
+  { fieldName: "organizations.designer", volatility: "stable", label: "Организация-проектировщик/субподрядчик" },
   { fieldName: "executor", volatility: "stable", label: "Исполнитель" },
   { fieldName: "customer", volatility: "stable", label: "Заказчик", authority: "routing" },
   { fieldName: "object", volatility: "stable", label: "Объект", authority: "routing" },
