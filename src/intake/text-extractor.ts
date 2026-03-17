@@ -152,6 +152,41 @@ export function extractFromText(text: string, sourceId: string): ExtractionResul
     remaining = remaining.replace(executorMatch[0], " ");
   }
 
+  // === Signatories ===
+  // Patterns: "мастер - ФИО", "технадзор: ФИО", "sign1 - Должность Орг ФИО"
+  const sigPatterns: Array<{ pattern: RegExp; field: FieldName }> = [
+    { pattern: /(?:мастер|sign1|представитель)[\s:—-]+(.+?)$/im, field: "signatories.sign1_customer" },
+    { pattern: /(?:подрядчик|sign2|начальник\s*участка)[\s:—-]+(.+?)$/im, field: "signatories.sign2_contractor" },
+    { pattern: /(?:субподрядчик|sign3)[\s:—-]+(.+?)$/im, field: "signatories.sign3_optional" },
+    { pattern: /(?:технадзор|тн|sign4|tech)[\s:—-]+(.+?)$/im, field: "signatories.tech_supervisor" },
+  ];
+
+  for (const { pattern, field } of sigPatterns) {
+    const sigMatch = remaining.match(pattern);
+    if (sigMatch) {
+      const text = sigMatch[1].trim();
+      // Extract FIO
+      const fioMatch = text.match(/([А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.[А-ЯЁ]\.?)/);
+      const fullName = fioMatch ? fioMatch[1] : text;
+      const orgMatch = text.match(/((?:АО|ООО|АНО|ЗАО|ИП)\s*[«"][^»"]+[»"])/);
+      const org = orgMatch ? orgMatch[1] : "";
+      let position = text;
+      if (fioMatch) position = position.replace(fioMatch[0], "");
+      if (orgMatch) position = position.replace(orgMatch[0], "");
+      position = position.replace(/[,;—\-]+/g, " ").replace(/\s+/g, " ").trim();
+
+      fields.push(makeField(field, {
+        person_id: "",
+        role: "",
+        org_description: org,
+        position: position || "—",
+        full_name: fullName,
+        aosr_full_line: text,
+      }, sourceId, "medium", "подписант из текста — проверить"));
+      remaining = remaining.replace(sigMatch[0], " ");
+    }
+  }
+
   // Clean up remaining
   const unmatched = remaining.replace(/\s+/g, " ").trim();
 

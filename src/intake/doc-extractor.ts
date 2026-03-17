@@ -421,6 +421,40 @@ function parseNumericIfPossible(key: string, value: string): string | number {
   return value;
 }
 
+/**
+ * Parse signatory text from Claude extraction into Signatory-like object.
+ * Input: "Мастер по ЭРС СВРЭС АО «ОЭК» Акимов Ю.О." or
+ *        "Акимов Ю.О., Мастер по ЭРС, АО «ОЭК»"
+ * Output: { full_name, position, org_description, ... }
+ */
+function parseSignatoryText(v: unknown): unknown {
+  const text = String(v).trim();
+  if (!text || text === "не найдено") return undefined;
+
+  // Try to extract ФИО (Surname I.O. pattern)
+  const fioMatch = text.match(/([А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.[А-ЯЁ]\.?)/);
+  const fullName = fioMatch ? fioMatch[1] : text.slice(0, 40);
+
+  // Try to extract organization (АО/ООО/АНО pattern)
+  const orgMatch = text.match(/((?:АО|ООО|АНО|ЗАО|ИП)\s*[«"][^»"]+[»"])/);
+  const org = orgMatch ? orgMatch[1] : "";
+
+  // Position = everything that's not FIO and not org
+  let position = text;
+  if (fioMatch) position = position.replace(fioMatch[0], "");
+  if (orgMatch) position = position.replace(orgMatch[0], "");
+  position = position.replace(/[,;—\-]+/g, " ").replace(/\s+/g, " ").trim();
+
+  return {
+    person_id: "",
+    role: "",
+    org_description: org,
+    position: position || "—",
+    full_name: fullName,
+    aosr_full_line: text,
+  };
+}
+
 /** Safely parse date string (DD.MM.YYYY) to DateComponents. Returns string if parse fails. */
 function safeParseDateValue(v: unknown): unknown {
   const s = String(v).trim();
@@ -512,6 +546,10 @@ const FIELD_MAPPING: Partial<Record<DocClass, Record<string, FieldMapEntry>>> = 
     ДИАМЕТР_СКВАЖИНЫ: { fieldName: "gnb_params.drill_diameter" },
     КОНФИГУРАЦИЯ: { fieldName: "gnb_params.configuration" },
     МАРКА_ТРУБЫ: { fieldName: "pipe", transform: (v) => ({ _merge: true, mark: String(v) }) },
+    ПОДПИСАНТ_1: { fieldName: "signatories.sign1_customer", transform: parseSignatoryText },
+    ПОДПИСАНТ_2: { fieldName: "signatories.sign2_contractor", transform: parseSignatoryText },
+    ПОДПИСАНТ_3: { fieldName: "signatories.sign3_optional", transform: parseSignatoryText },
+    ПОДПИСАНТ_ТН: { fieldName: "signatories.tech_supervisor", transform: parseSignatoryText },
   },
   prior_aosr: {
     НОМЕР_ГНБ: { fieldName: "gnb_number" },
@@ -531,6 +569,10 @@ const FIELD_MAPPING: Partial<Record<DocClass, Record<string, FieldMapEntry>>> = 
     ДИАМЕТР_СКВАЖИНЫ: { fieldName: "gnb_params.drill_diameter" },
     КОНФИГУРАЦИЯ: { fieldName: "gnb_params.configuration" },
     МАРКА_ТРУБЫ: { fieldName: "pipe", transform: (v) => ({ _merge: true, mark: String(v) }) },
+    ПОДПИСАНТ_1: { fieldName: "signatories.sign1_customer", transform: parseSignatoryText },
+    ПОДПИСАНТ_2: { fieldName: "signatories.sign2_contractor", transform: parseSignatoryText },
+    ПОДПИСАНТ_3: { fieldName: "signatories.sign3_optional", transform: parseSignatoryText },
+    ПОДПИСАНТ_ТН: { fieldName: "signatories.tech_supervisor", transform: parseSignatoryText },
   },
   summary_excel: {
     НОМЕР_ГНБ: { fieldName: "gnb_number" },
@@ -550,5 +592,9 @@ const FIELD_MAPPING: Partial<Record<DocClass, Record<string, FieldMapEntry>>> = 
     ДИАМЕТР_СКВАЖИНЫ: { fieldName: "gnb_params.drill_diameter" },
     КОНФИГУРАЦИЯ: { fieldName: "gnb_params.configuration" },
     МАРКА_ТРУБЫ: { fieldName: "pipe", transform: (v) => ({ _merge: true, mark: String(v) }) },
+    ПОДПИСАНТ_1: { fieldName: "signatories.sign1_customer", transform: parseSignatoryText },
+    ПОДПИСАНТ_2: { fieldName: "signatories.sign2_contractor", transform: parseSignatoryText },
+    ПОДПИСАНТ_3: { fieldName: "signatories.sign3_optional", transform: parseSignatoryText },
+    ПОДПИСАНТ_ТН: { fieldName: "signatories.tech_supervisor", transform: parseSignatoryText },
   },
 };
