@@ -45,8 +45,9 @@ export function classifyByFilename(filename: string): ClassifyResult {
     if (lower.includes("назначен")) {
       return { doc_class: "appointment_letter", confidence: "high", hints: ["filename: назначен"] };
     }
-    if (lower.includes("схема") || lower.includes("профиль") || lower.includes("чертёж") || lower.includes("чертеж")) {
-      return { doc_class: "executive_scheme", confidence: "high", hints: ["filename: схема/профиль/чертёж"] };
+    if (lower.includes("схема") || lower.includes("профиль") || lower.includes("чертёж") || lower.includes("чертеж")
+      || /\bис\b/.test(lower) || lower.includes("исполнительн")) {
+      return { doc_class: "executive_scheme", confidence: "high", hints: ["filename: ис/схема/профиль/чертёж"] };
     }
     if (lower.includes("аоср")) {
       return { doc_class: "prior_aosr", confidence: "high", hints: ["filename: аоср"] };
@@ -84,8 +85,10 @@ const TEXT_PATTERNS: Array<{ pattern: RegExp; doc_class: DocClass; hint: string 
 
   // Executive scheme
   { pattern: /исполнительная\s*схема/i, doc_class: "executive_scheme", hint: "text: исполнительная схема" },
+  { pattern: /исполнительный\s*чертёж|исполнительный\s*чертеж/i, doc_class: "executive_scheme", hint: "text: исполнительный чертёж" },
   { pattern: /план\s*трассы|профиль\s*перехода/i, doc_class: "executive_scheme", hint: "text: план трассы / профиль перехода" },
   { pattern: /масштаб\s*\d+:\d+/i, doc_class: "executive_scheme", hint: "text: масштаб" },
+  { pattern: /L\s*(?:пл|проф)|длина\s*(?:плановая|профильная)/i, doc_class: "executive_scheme", hint: "text: L пл/проф" },
 
   // Prior AOSR
   { pattern: /АКТ\s*ОСВИДЕТЕЛЬСТВОВАНИЯ\s*СКРЫТЫХ/i, doc_class: "prior_aosr", hint: "text: акт освидетельствования скрытых работ" },

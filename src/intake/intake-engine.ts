@@ -180,9 +180,13 @@ export async function handleIntakeDocument(
   const mappedFields = mapExtractionToFields(result, sourceId);
   let updated = 0;
   let conflicts = 0;
+  const updatedDocFields: Array<{ name: any; value: unknown }> = [];
   for (const field of mappedFields) {
     const res = stores.intakeDrafts.setField(draft.id, field);
-    if (res.updated) updated++;
+    if (res.updated) {
+      updated++;
+      updatedDocFields.push({ name: field.field_name, value: field.value });
+    }
     if (res.conflict) conflicts++;
   }
 
@@ -201,6 +205,7 @@ export async function handleIntakeDocument(
     warnings: result.warnings,
     draft: freshDraft,
     base,
+    updatedFields: updatedDocFields,
   });
 
   // Offer naming proposal for non-trivial documents
@@ -531,7 +536,7 @@ function handleBaseConfirmation(chatId: number, input: string, stores: IntakeSto
       if (base.pipe?.mark) highlights.push(`  • Труба: ${base.pipe.mark}`);
 
       const highlightBlock = highlights.length > 0
-        ? `\nКлючевое:\n${highlights.join("\n")}\n`
+        ? `\n${highlights.join("\n")}\n`
         : "\n";
 
       return {
@@ -592,12 +597,16 @@ function handleCollectingText(chatId: number, input: string, stores: IntakeStore
       : "Текст без распознанных данных",
   });
 
-  // Apply fields
+  // Apply fields and track what was updated
   let updated = 0;
   let conflicts = 0;
+  const updatedFields: Array<{ name: any; value: unknown }> = [];
   for (const field of extraction.fields) {
     const res = stores.intakeDrafts.setField(draftId, field);
-    if (res.updated) updated++;
+    if (res.updated) {
+      updated++;
+      updatedFields.push({ name: field.field_name, value: field.value });
+    }
     if (res.conflict) conflicts++;
   }
 
@@ -626,6 +635,7 @@ function handleCollectingText(chatId: number, input: string, stores: IntakeStore
       warnings: [],
       draft: freshDraft,
       base,
+      updatedFields,
     }),
   };
 }

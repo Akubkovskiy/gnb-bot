@@ -21,6 +21,8 @@ export interface IntakeResponseInput {
   warnings: string[];
   draft: IntakeDraft;
   base?: Transition;
+  /** Updated field names + values for owner-facing display. */
+  updatedFields?: Array<{ name: FieldName; value: unknown }>;
 }
 
 const DOC_CLASS_LABELS: Partial<Record<DocClass, string>> = {
@@ -50,9 +52,16 @@ export function buildIntakeResponse(input: IntakeResponseInput): string {
   const fileName = input.fileName ? `: ${input.fileName}` : "";
   parts.push(`📎 ${label}${fileName}`);
 
-  // Line 2: extraction result
-  if (input.fieldsExtracted > 0) {
-    parts.push(`Извлечено: ${input.fieldsExtracted}, обновлено: ${input.fieldsUpdated}`);
+  // Line 2: what was updated — show actual fields
+  if (input.updatedFields && input.updatedFields.length > 0) {
+    for (const f of input.updatedFields.slice(0, 6)) {
+      parts.push(`  ${getFieldLabel(f.name)}: ${formatValue(f.value)}`);
+    }
+    if (input.updatedFields.length > 6) {
+      parts.push(`  ...и ещё ${input.updatedFields.length - 6}`);
+    }
+  } else if (input.fieldsExtracted > 0) {
+    parts.push(`Обновлено: ${input.fieldsUpdated} из ${input.fieldsExtracted}`);
   } else {
     parts.push("Не удалось извлечь структурированные данные");
   }
