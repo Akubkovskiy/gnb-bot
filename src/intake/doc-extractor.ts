@@ -8,6 +8,7 @@
  */
 
 import path from "node:path";
+import { logger } from "../logger.js";
 import type {
   ExtractionResult,
   ExtractionField,
@@ -99,7 +100,10 @@ export async function extractDocument(
   }
 
   // Step 8: normalize
-  return normalizeExtraction(rawResponse, docClass, sourceType, materialSubtype);
+  logger.info({ docClass, reclassified, responseLen: rawResponse.length, responsePreview: rawResponse.slice(0, 300) }, "Claude extraction result");
+  const result = normalizeExtraction(rawResponse, docClass, sourceType, materialSubtype);
+  logger.info({ docClass, fieldsCount: result.fields.length, warnings: result.warnings }, "Normalized extraction");
+  return result;
 }
 
 // === Prompt builder ===
