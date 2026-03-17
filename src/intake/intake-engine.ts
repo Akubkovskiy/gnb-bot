@@ -136,8 +136,17 @@ export function handleIntakeText(
       return handleCollectingText(chatId, input, stores);
     case "awaiting_review_confirmation":
       return handleReviewConfirmation(chatId, input, stores);
-    case "awaiting_name_confirmation":
-      return handleNameTextResponse(chatId, input, stores);
+    case "awaiting_name_confirmation": {
+      // Short answers (да/нет/пропустить/исправить) → naming handler
+      // Longer text → auto-skip naming, process as collecting data
+      const isNamingAnswer = ["да", "нет", "подтвердить", "ок", "пропустить", "исправить", "изменить"].includes(lower);
+      if (isNamingAnswer) {
+        return handleNameTextResponse(chatId, input, stores);
+      }
+      // Auto-skip naming, return to collecting
+      setSession(chatId, { ...session, state: "collecting", pendingNamingDocId: undefined });
+      return handleCollectingText(chatId, input, stores);
+    }
     case "awaiting_name_edit":
       return handleNameEditInput(chatId, input, stores);
     default:
@@ -157,7 +166,14 @@ export async function handleIntakeDocument(
   callClaude: ClaudeCaller,
 ): Promise<IntakeResponse | null> {
   const session = getSession(chatId);
-  if (session.state !== "collecting" || !session.draftId) return null;
+  // Accept documents in collecting or naming states (auto-skip naming)
+  const acceptStates: IntakeState[] = ["collecting", "awaiting_name_confirmation", "awaiting_name_edit"];
+  if (!acceptStates.includes(session.state) || !session.draftId) return null;
+
+  // Auto-reset naming state
+  if (session.state !== "collecting") {
+    setSession(chatId, { ...session, state: "collecting", pendingNamingDocId: undefined });
+  }
 
   const draft = stores.intakeDrafts.get(session.draftId);
   if (!draft) return null;
