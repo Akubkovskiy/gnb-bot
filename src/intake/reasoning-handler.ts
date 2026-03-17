@@ -300,6 +300,26 @@ export async function processTextWithReasoning(
     ? stores.transitions.get(freshDraft.base_transition_id) ?? undefined
     : undefined;
 
+  // Check if all required fields are now present
+  const missingRequired = REQUIRED_FIELDS.filter(
+    (r) => !freshDraft.fields.some((f) => f.field_name === r && !f.conflict_with_existing),
+  );
+  const allReady = missingRequired.length === 0;
+
+  // Build buttons: if all required present → offer review/confirm
+  const buttons: Array<Array<{ text: string; callback_data: string }>> = [];
+  if (allReady) {
+    buttons.push([
+      { text: "Проверить ГНБ", callback_data: "intake:review" },
+      { text: "Подтвердить", callback_data: "intake:confirm" },
+    ]);
+  } else {
+    buttons.push([
+      { text: `Не хватает (${missingRequired.length})`, callback_data: "intake:missing" },
+      { text: "Сводка", callback_data: "intake:review" },
+    ]);
+  }
+
   return {
     response: {
       message: buildIntakeResponse({
@@ -316,6 +336,7 @@ export async function processTextWithReasoning(
         conflictFields,
         allExtractedFields: fieldsToApply.map((f) => ({ name: f.field_name, value: f.value })),
       }),
+      buttons,
     },
     updatedFields,
     conflictFields,
