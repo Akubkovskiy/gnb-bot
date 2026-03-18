@@ -54,6 +54,20 @@ function getSystemPromptWithMemory(): string {
   return `${CLAUDE_SYSTEM}\n\n${memory}`;
 }
 
+/**
+ * Strip markdown formatting that Telegram plain-text mode doesn't render.
+ * Converts: **bold** → bold, ```code``` → code, `inline` → inline, ### headings → headings
+ */
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, (m) => m.replace(/^```\w*\n?/, "").replace(/\n?```$/, "")) // code blocks → plain
+    .replace(/\*\*\*(.+?)\*\*\*/g, "$1")  // ***bold italic***
+    .replace(/\*\*(.+?)\*\*/g, "$1")      // **bold**
+    .replace(/\*(.+?)\*/g, "$1")          // *italic*
+    .replace(/`(.+?)`/g, "$1")            // `inline code`
+    .replace(/^#{1,6}\s+/gm, "");         // ### headings
+}
+
 function splitMessage(text: string, maxLen = 4096): string[] {
   if (text.length <= maxLen) return [text];
   const parts: string[] = [];
@@ -464,7 +478,7 @@ export function registerHandlers(bot: Bot): void {
       const text = await ocrDocument(localPath);
       fs.unlinkSync(localPath);
 
-      const parts = splitMessage(`📋 Результат:\n\n${text}`);
+      const parts = splitMessage(stripMarkdown(`📋 Результат:\n\n${text}`));
       await ctx.api.editMessageText(chatId, status.message_id, parts[0]);
       for (let i = 1; i < parts.length; i++) await ctx.reply(parts[i]);
     } catch (err) {
@@ -534,7 +548,7 @@ export function registerHandlers(bot: Bot): void {
           `Извлеки ключевые данные из этого акта ГНБ. Формат: каждое поле на новой строке "Поле: значение".`;
 
         const claudeResp = await askClaude(prompt, { systemPrompt: getSystemPromptWithMemory() });
-        const result = `📊 Данные из ${fileName} (${sheetName}):\n\n${claudeResp}`;
+        const result = stripMarkdown(`📊 Данные из ${fileName} (${sheetName}):\n\n${claudeResp}`);
         const parts = splitMessage(result);
         await ctx.api.editMessageText(chatId, status.message_id, parts[0]);
         for (let i = 1; i < parts.length; i++) await ctx.reply(parts[i]);
@@ -551,7 +565,7 @@ export function registerHandlers(bot: Bot): void {
         const text = await ocrDocument(localPath);
         fs.unlinkSync(localPath);
 
-        const parts = splitMessage(`📄 Данные из ${fileName}:\n\n${text}`);
+        const parts = splitMessage(stripMarkdown(`📄 Данные из ${fileName}:\n\n${text}`));
         await ctx.api.editMessageText(chatId, status.message_id, parts[0]);
         for (let i = 1; i < parts.length; i++) await ctx.reply(parts[i]);
       } catch (err) {
@@ -652,7 +666,8 @@ export function registerHandlers(bot: Bot): void {
     const status = await ctx.reply("⏳ Думаю...");
     try {
       const response = await askClaude(text, { systemPrompt: getSystemPromptWithMemory() });
-      const parts = splitMessage(response);
+      const clean = stripMarkdown(response);
+      const parts = splitMessage(clean);
       await ctx.api.editMessageText(chatId, status.message_id, parts[0]);
       for (let i = 1; i < parts.length; i++) await ctx.reply(parts[i]);
     } catch (err) {
