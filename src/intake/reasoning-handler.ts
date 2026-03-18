@@ -169,7 +169,13 @@ export async function processTextWithReasoning(
         if (reasoningOutput.intent === "confirmation") {
           // If there are signatory updates, don't skip — apply them
           if (!reasoningOutput.signatoryUpdates?.length && !reasoningOutput.fieldUpdates?.length) {
-            return null;
+            // Return the summary as acknowledgment instead of null (which causes "Не распознал")
+            return {
+              response: { message: reasoningOutput.summary || "Принято." },
+              updatedFields: [],
+              conflictFields: [],
+              usedReasoning: true,
+            };
           }
           // Otherwise fall through to process field/signatory updates
         }
@@ -308,28 +314,41 @@ export async function processTextWithReasoning(
                 conflict_with_existing: false,
               });
 
-              // Auto-fill organization from person's org
+              // Auto-fill organization from person's org — but only if draft doesn't already have richer data
               if (org) {
                 const orgFieldName = roleToOrgFieldName(signatoryUpdate.role);
                 if (orgFieldName) {
-                  fieldsToApply.push({
-                    field_name: orgFieldName,
-                    value: {
-                      id: org.id,
-                      name: org.name,
-                      short_name: org.short_name,
-                      ogrn: org.ogrn ?? "",
-                      inn: org.inn ?? "",
-                      legal_address: org.legal_address ?? "",
-                      phone: org.phone ?? "",
-                      sro_name: org.sro_name ?? "",
-                    },
-                    source_id: sourceId,
-                    source_type: "manual_text",
-                    confidence: "high",
-                    confirmed_by_owner: false,
-                    conflict_with_existing: false,
-                  });
+                  const existingOrg = draft.fields.find(
+                    (f) => f.field_name === orgFieldName && !f.conflict_with_existing,
+                  );
+                  const existingOrgVal = existingOrg?.value as Record<string, unknown> | undefined;
+                  // Only auto-fill if:
+                  // - no existing org data, OR
+                  // - existing org is less detailed (shorter string representation)
+                  const existingLen = existingOrgVal ? JSON.stringify(existingOrgVal).length : 0;
+                  const newOrgValue = {
+                    id: org.id,
+                    name: org.name,
+                    short_name: org.short_name,
+                    ogrn: org.ogrn ?? "",
+                    inn: org.inn ?? "",
+                    legal_address: org.legal_address ?? "",
+                    phone: org.phone ?? "",
+                    sro_name: org.sro_name ?? "",
+                  };
+                  const newLen = JSON.stringify(newOrgValue).length;
+
+                  if (!existingOrg || newLen >= existingLen) {
+                    fieldsToApply.push({
+                      field_name: orgFieldName,
+                      value: newOrgValue,
+                      source_id: sourceId,
+                      source_type: "manual_text",
+                      confidence: "high",
+                      confirmed_by_owner: false,
+                      conflict_with_existing: false,
+                    });
+                  }
                 }
               }
             } else if (signatoryUpdate.action === "remove") {

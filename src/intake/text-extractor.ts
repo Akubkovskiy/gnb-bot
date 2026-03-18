@@ -153,43 +153,31 @@ export function extractFromText(text: string, sourceId: string): ExtractionResul
   }
 
   // === Signatories ===
-  // Patterns: "мастер - ФИО", "технадзор: ФИО", "sign1 - Должность Орг ФИО"
-  const sigPatterns: Array<{ pattern: RegExp; field: FieldName }> = [
-    { pattern: /(?:мастер|sign1|представитель)[\s:—-]+(.+?)$/im, field: "signatories.sign1_customer" },
-    { pattern: /(?:подрядчик|sign2|начальник\s*участка)[\s:—-]+(.+?)$/im, field: "signatories.sign2_contractor" },
-    { pattern: /(?:субподрядчик|sign3)[\s:—-]+(.+?)$/im, field: "signatories.sign3_optional" },
-    { pattern: /(?:технадзор|тн|sign4|tech)[\s:—-]+(.+?)$/im, field: "signatories.tech_supervisor" },
+  // Split input on signatory role keywords to handle multiple signatories in one message.
+  // E.g. "технадзор Гайдуков, мастер Коробков, подрядчик Буряк"
+  const ROLE_KEYWORDS = [
+    { keywords: ["мастер", "sign1", "представитель"], field: "signatories.sign1_customer" as FieldName },
+    { keywords: ["подрядчик", "sign2"], field: "signatories.sign2_contractor" as FieldName },
+    { keywords: ["субподрядчик", "sign3"], field: "signatories.sign3_optional" as FieldName },
+    { keywords: ["технадзор", "тн", "sign4", "tech"], field: "signatories.tech_supervisor" as FieldName },
   ];
 
-  for (const { pattern, field } of sigPatterns) {
-    const sigMatch = remaining.match(pattern);
-    if (sigMatch) {
-      const text = sigMatch[1].trim();
-      // Extract FIO
-      const fioMatch = text.match(/([А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.[А-ЯЁ]\.?)/);
-      const fullName = fioMatch ? fioMatch[1] : capitalizeFirst(text);
-      const orgMatch = text.match(/((?:АО|ООО|АНО|ЗАО|ИП)\s*[«"][^»"]+[»"])/);
-      const org = orgMatch ? orgMatch[1] : "";
-      let position = text;
-      if (fioMatch) position = position.replace(fioMatch[0], "");
-      if (orgMatch) position = position.replace(orgMatch[0], "");
-      position = position.replace(/[,;—\-]+/g, " ").replace(/\s+/g, " ").trim();
+  // Build a combined regex that splits on role boundaries
+  const allRoleWords = ROLE_KEYWORDS.flatMap((r) => r.keywords);
+  const roleSplitRegex = new RegExp(`(?:^|[,;→\\n])\\s*(?=${allRoleWords.join("|")})`, "im");
+  const sigSegments = remaining.split(roleSplitRegex).filter((s) => s.trim());
 
-      // If position ended up as the same as fullName (no separate position info),
-      // use a placeholder to avoid duplicating the name
-      if (!fioMatch && position.toLowerCase() === fullName.toLowerCase()) {
-        position = "";
+  for (const segment of sigSegments) {
+    const trimSeg = segment.trim();
+    for (const { keywords, field } of ROLE_KEYWORDS) {
+      const kwPattern = new RegExp(`^(?:${keywords.join("|")})[\\s:—\\-]+(.+)$`, "im");
+      const sigMatch = trimSeg.match(kwPattern);
+      if (sigMatch) {
+        const text = sigMatch[1].trim();
+        fields.push(makeField(field, parseSignatoryText(text), sourceId, "medium", "подписант из текста — проверить"));
+        remaining = remaining.replace(trimSeg, " ");
+        break;
       }
-
-      fields.push(makeField(field, {
-        person_id: "",
-        role: "",
-        org_description: org,
-        position: position || "—",
-        full_name: fullName,
-        aosr_full_line: text,
-      }, sourceId, "medium", "подписант из текста — проверить"));
-      remaining = remaining.replace(sigMatch[0], " ");
     }
   }
 
@@ -200,6 +188,55 @@ export function extractFromText(text: string, sourceId: string): ExtractionResul
 }
 
 // === Helpers ===
+
+/**
+ * Parse signatory text into structured fields.
+ * Handles: "инженер ЦРЭС АО «ОЭК» Селиванов В.Ю."
+ * Strips order/NRS from position into separate fields.
+ */
+function parseSignatoryText(text: string): Record<string, unknown> {
+  // Extract FIO
+  const fioMatch = text.match(/([А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.[А-ЯЁ]\.?)/);
+  const fullName = fioMatch ? fioMatch[1] : capitalizeFirst(text.split(/[\s,;]+/)[0] || text);
+
+  // Extract organization
+  const orgMatch = text.match(/((?:АО|ООО|АНО|ЗАО|ИП)\s*[«"][^»"]+[»"])/);
+  const org = orgMatch ? orgMatch[1] : "";
+
+  // Extract NRS
+  const nrsMatch = text.match(/(?:НРС|идентификационный\s*номер)\s*[№:]?\s*([А-Яа-яA-Za-z]?-?\d{2}-\d{5,})\s*(?:от\s*(\d{2}\.\d{2}\.\d{4}))?/i);
+  const nrs_id = nrsMatch ? nrsMatch[1] : undefined;
+  const nrs_date = nrsMatch ? nrsMatch[2] : undefined;
+
+  // Extract order/appointment
+  const orderMatch = text.match(/(?:приказ|распоряжение)\s*[№:]?\s*([^\s,]+)\s*(?:от\s*(\d{2}\.\d{2}\.\d{4}))?/i);
+  const order_type = orderMatch ? (text.match(/распоряжение/i) ? "распоряжение" : "приказ") : undefined;
+  const order_number = orderMatch ? orderMatch[1] : undefined;
+  const order_date = orderMatch ? orderMatch[2] : undefined;
+
+  // Build clean position: remove FIO, org, NRS, order from text
+  let position = text;
+  if (fioMatch) position = position.replace(fioMatch[0], "");
+  if (orgMatch) position = position.replace(orgMatch[0], "");
+  if (nrsMatch) position = position.replace(nrsMatch[0], "");
+  if (orderMatch) position = position.replace(orderMatch[0], "");
+  position = position.replace(/[,;—\-→]+/g, " ").replace(/\s+/g, " ").trim();
+
+  if (!fioMatch && position.toLowerCase() === fullName.toLowerCase()) {
+    position = "";
+  }
+
+  return {
+    person_id: "",
+    role: "",
+    org_description: org,
+    position: position || "—",
+    full_name: fullName,
+    aosr_full_line: text,
+    ...(nrs_id ? { nrs_id, nrs_date } : {}),
+    ...(order_type ? { order_type, order_number, order_date } : {}),
+  };
+}
 
 /** Capitalize first letter of a surname (e.g. "гайдуков" → "Гайдуков"). */
 function capitalizeFirst(s: string): string {
