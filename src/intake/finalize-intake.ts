@@ -115,7 +115,7 @@ export function finalizeIntake(
     const custId = (d.customer || "").toLowerCase().replace(/[^a-zа-яё0-9]/gi, "-").replace(/-+/g, "-");
     repos.customers.upsert({ id: custId, name: d.customer || custId }, [d.customer!.toLowerCase()]);
     const objId = `${custId}-${(d.object || "").toLowerCase().replace(/[^a-zа-яё0-9]/gi, "-").replace(/-+/g, "-")}`;
-    repos.objects.upsert({ id: objId, customer_id: custId, name: d.object || "", official_name: d.object_name || d.object || "" });
+    repos.objects.upsert({ id: objId, customer_id: custId, short_name: d.object || "", official_name: d.object_name || d.object || "" });
   } catch {
     // Non-critical — SQLite may not be available
   }
