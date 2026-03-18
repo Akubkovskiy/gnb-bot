@@ -107,8 +107,6 @@ export function startIntake(chatId: number, stores: IntakeStores): IntakeRespons
   } catch { /* no JSON store */ }
   try {
     const db = getDb(getMemoryDir());
-    // Use findCustomer with empty query to get all — or query directly
-    // getDb returns drizzle instance; import schema lazily
     const s = require("../db/schema.js");
     const rows = db.select({ name: s.customers.name }).from(s.customers).all();
     for (const c of rows) {
@@ -116,7 +114,10 @@ export function startIntake(chatId: number, stores: IntakeStores): IntakeRespons
         customerNames.push(c.name);
       }
     }
-  } catch { /* DB not available */ }
+  } catch (err) {
+    const { logger: log } = require("../logger.js");
+    log.warn({ err: (err as Error).message }, "Failed to load customers from DB");
+  }
 
   if (customerNames.length > 0) {
     const list = customerNames.map((n, i) => `  ${i + 1}. ${n}`).join("\n");
