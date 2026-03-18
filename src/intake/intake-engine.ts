@@ -27,6 +27,8 @@ import { getReusableBaseDocuments, buildDocumentRegistry, deriveRegistryDocument
 import { buildNameProposal, applyApprovedName, validateNameProposal } from "./naming.js";
 import { evaluateDocumentCoverage, allRequiredPresent, getMissingRequired } from "./document-requirements.js";
 import { buildDebugSnapshot, formatDebugReview } from "./debug-view.js";
+import * as dbSchema from "../db/schema.js";
+import { createRepos } from "../db/repositories.js";
 
 // === Session state (in-memory, per chat) ===
 
@@ -107,7 +109,7 @@ export function startIntake(chatId: number, stores: IntakeStores): IntakeRespons
   } catch { /* no JSON store */ }
   try {
     const db = getDb(getMemoryDir());
-    const s = require("../db/schema.js");
+    const s = dbSchema;
     const rows = db.select({ name: s.customers.name }).from(s.customers).all();
     for (const c of rows) {
       if (c.name && !customerNames.some((n) => n.toLowerCase() === c.name.toLowerCase())) {
@@ -115,8 +117,7 @@ export function startIntake(chatId: number, stores: IntakeStores): IntakeRespons
       }
     }
   } catch (err) {
-    const { logger: log } = require("../logger.js");
-    log.warn({ err: (err as Error).message }, "Failed to load customers from DB");
+    // silently ignore — DB not available
   }
 
   if (customerNames.length > 0) {
@@ -541,7 +542,7 @@ function handleCustomerInput(chatId: number, input: string, stores: IntakeStores
     } catch { /* */ }
     try {
       const db = getDb(getMemoryDir());
-      const s = require("../db/schema.js");
+      const s = dbSchema;
       const rows = db.select({ name: s.customers.name }).from(s.customers).all();
       for (const c of rows) {
         if (c.name && !customerNames.some((n) => n.toLowerCase() === c.name.toLowerCase())) {
@@ -573,8 +574,7 @@ function handleCustomerInput(chatId: number, input: string, stores: IntakeStores
     const db = getDb(getMemoryDir());
     const dbCustomer = dbFindCustomer(db, input);
     if (dbCustomer) {
-      const { createRepos: cr } = require("../db/repositories.js");
-      const repos = cr(db);
+      const repos = createRepos(db);
       const dbObjects = repos.objects.getByCustomerId(dbCustomer.id);
       setSession(chatId, { ...getSession(chatId), state: "awaiting_object", customer: dbCustomer.name });
 

@@ -1,1 +1,18 @@
-﻿
+﻿1|A=Key|B=Meaning|C=Used In|D=Notes|F=Signatory Pattern
+2|A=title_line|B=Main object/title line|C=Acts B3; AOSR A4|D=Primary printable title|F=desc = acts left cell
+3|A=object_name|B=Acts-facing object name|C=Acts B4|D=Human-readable acts object label|F=line = acts signature line
+4|A=address|B=Normalized printable address|C=Acts B5; AOSR data B5|D=Should be print-ready|F=full_aosr = full printable line
+5|A=project_number|B=Raw project code|C=Acts B7|D=Project code only|F=name = short surname + initials
+6|A=project_doc_line|B=AOSR project-document line|C=AOSR A45|D=May equal project number or richer runtime string|F=
+7|A=executor|B=Executor / performer|C=Acts B10|D=Acts only|F=
+8|A=org_customer_display|B=Short customer line for acts|C=Acts B14|D=Acts display value|F=
+9|A=org_customer_full_aosr|B=Full customer line for AOSR|C=AOSR A7|D=AOSR requisites value|F=
+10|A=org_contractor_display|B=Short contractor line for acts|C=Acts B15|D=Acts display value|F=
+11|A=org_contractor_full_aosr|B=Full contractor line for AOSR|C=AOSR A10|D=AOSR requisites value|F=
+12|A=org_designer_display|B=Short designer/subcontractor line for acts|C=Acts B16|D=Acts display value|F=
+13|A=org_designer_full_aosr|B=Full designer/subcontractor line for AOSR|C=AOSR A13|D=AOSR requisites value|F=
+14|A=sign2_desc|B=Acts left cell for sign2|C=Acts B21|D=Role / org description|F=
+15|A=sign2_line|B=Acts signature line for sign2|C=Acts C21|D=Signature line|F=
+16|A=sign2_full_aosr|B=Full AOSR line for sign2|C=AOSR A27/A30|D=Full printable line|F=
+17|A=sign3_desc|B=Acts left cell for sign3|C=Acts B22|D=Optional role / org description|F=
+18|A=sign3_line|B=Acts signature line for sign3|C=Acts C22|D=Optional signature line|F=
