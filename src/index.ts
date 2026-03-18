@@ -38,6 +38,15 @@ async function main() {
   // Регистрация обработчиков
   registerHandlers(bot);
 
+  // Telegram command menu (кнопка слева от поля ввода)
+  await bot.api.setMyCommands([
+    { command: "new_gnb", description: "Новый ГНБ переход" },
+    { command: "review_gnb", description: "Сводка текущего черновика" },
+    { command: "review_gnb_debug", description: "Debug mapping review" },
+    { command: "cancel", description: "Отменить черновик" },
+    { command: "help", description: "Справка" },
+  ]);
+
   // Обработка ошибок
   bot.catch((err) => {
     logger.error({ err: err.error, ctx: err.ctx?.update?.update_id }, "Ошибка бота");
