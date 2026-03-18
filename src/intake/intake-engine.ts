@@ -864,12 +864,18 @@ function buildIntakeButtons(draft: IntakeDraft): InlineButton[][] {
   );
 
   const buttons: InlineButton[][] = [];
-  const row1: InlineButton[] = [];
-  if (missingRequired.length > 0) {
-    row1.push({ text: `Не хватает (${missingRequired.length})`, callback_data: "intake:missing" });
+  if (missingRequired.length === 0) {
+    // All required fields present — offer review + confirm
+    buttons.push([
+      { text: "Проверить ГНБ", callback_data: "intake:review" },
+      { text: "Подтвердить", callback_data: "intake:confirm" },
+    ]);
+  } else {
+    buttons.push([
+      { text: `Не хватает (${missingRequired.length})`, callback_data: "intake:missing" },
+      { text: "Сводка", callback_data: "intake:review" },
+    ]);
   }
-  row1.push({ text: "Сводка", callback_data: "intake:review" });
-  buttons.push(row1);
 
   return buttons;
 }
