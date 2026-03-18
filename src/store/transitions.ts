@@ -54,10 +54,13 @@ export class TransitionStore {
 
   create(transition: Transition): void {
     const data = this.load();
-    if (data.transitions.some((t) => t.id === transition.id)) {
-      throw new Error(`Transition ${transition.id} already exists`);
+    const existingIdx = data.transitions.findIndex((t) => t.id === transition.id);
+    if (existingIdx !== -1) {
+      // Upsert: update existing transition with new data (re-generation)
+      data.transitions[existingIdx] = transition;
+    } else {
+      data.transitions.push(transition);
     }
-    data.transitions.push(transition);
     this.save(data);
   }
 

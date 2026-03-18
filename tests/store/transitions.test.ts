@@ -60,9 +60,12 @@ describe("TransitionStore", () => {
     expect(store.get("kraft-marino-5-5")).toMatchObject({ id: "kraft-marino-5-5" });
   });
 
-  it("create throws on duplicate id", () => {
+  it("create upserts on duplicate id", () => {
     store.create(makeTransition());
-    expect(() => store.create(makeTransition())).toThrow("already exists");
+    const updated = makeTransition();
+    updated.address = "Новый адрес";
+    store.create(updated);
+    expect(store.get("kraft-marino-5-5")?.address).toBe("Новый адрес");
   });
 
   it("getByGnbNumber", () => {
