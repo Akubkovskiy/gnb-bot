@@ -98,6 +98,29 @@ export function startIntake(chatId: number, stores: IntakeStores): IntakeRespons
   }
 
   setSession(chatId, { state: "awaiting_customer" });
+
+  // Build customer list from JSON store + SQLite
+  const customerNames: string[] = [];
+  try {
+    const jsonCustomers = stores.customers.list();
+    for (const c of jsonCustomers) customerNames.push(c.name);
+  } catch { /* no JSON store */ }
+  try {
+    const db = getDb(getMemoryDir());
+    const { createRepos } = require("../db/repositories.js");
+    const repos = createRepos(db);
+    const dbCustomers = repos.customers.getAll();
+    for (const c of dbCustomers) {
+      if (!customerNames.some((n) => n.toLowerCase() === c.name.toLowerCase())) {
+        customerNames.push(c.name);
+      }
+    }
+  } catch { /* DB not available */ }
+
+  if (customerNames.length > 0) {
+    const list = customerNames.map((n, i) => `  ${i + 1}. ${n}`).join("\n");
+    return { message: `Новый ГНБ-переход. Кто заказчик?\n${list}` };
+  }
   return { message: "Новый ГНБ-переход. Кто заказчик?" };
 }
 
@@ -507,6 +530,28 @@ function handleResumePrompt(chatId: number, input: string, stores: IntakeStores)
 }
 
 function handleCustomerInput(chatId: number, input: string, stores: IntakeStores): IntakeResponse {
+  // Handle numeric selection from customer list
+  const idx = parseInt(input, 10);
+  if (!isNaN(idx) && idx >= 1) {
+    const customerNames: string[] = [];
+    try {
+      for (const c of stores.customers.list()) customerNames.push(c.name);
+    } catch { /* */ }
+    try {
+      const db = getDb(getMemoryDir());
+      const { createRepos } = require("../db/repositories.js");
+      const repos = createRepos(db);
+      for (const c of repos.customers.getAll()) {
+        if (!customerNames.some((n) => n.toLowerCase() === c.name.toLowerCase())) {
+          customerNames.push(c.name);
+        }
+      }
+    } catch { /* */ }
+    if (idx <= customerNames.length) {
+      input = customerNames[idx - 1];
+    }
+  }
+
   // Search customer in JSON store first (backward compat)
   const found = stores.customers.findByNameOrAlias(input);
 
