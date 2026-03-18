@@ -31,9 +31,14 @@ function docClassToKind(docClass: DocClass, relatedEntity?: string): DocumentKin
   }
 }
 
-/** Refine kind based on material subtype or related entity. */
+/** Refine kind based on material subtype or related entity.
+ *  Only applies to generic kinds — already-classified specific types
+ *  (pipe_passport, pipe_certificate, etc.) are never overridden. */
 function refineMaterialKind(kind: DocumentKind, relatedEntity?: string): DocumentKind {
   if (!relatedEntity) return kind;
+  // Only refine generic/ambiguous kinds — specific doc types keep their classification
+  const refinableKinds: DocumentKind[] = ["other", "free_text_note", "photo"];
+  if (!refinableKinds.includes(kind)) return kind;
   const lower = relatedEntity.toLowerCase();
   if (/бентонит/i.test(lower)) return "bentonite_passport";
   if (/укпт|уплотнител/i.test(lower)) return "ukpt_doc";

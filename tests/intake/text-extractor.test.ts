@@ -157,6 +157,28 @@ describe("extractFromText", () => {
     expect(r.unmatched).toContain("привет");
   });
 
+  // === Signatories ===
+
+  it("extracts signatory without duplicating surname as position (Bug 1)", () => {
+    const r = extractFromText("технадзор - гайдуков", SRC);
+    const tech = r.fields.find((f) => f.field_name === "signatories.tech_supervisor");
+    expect(tech).toBeDefined();
+    const val = tech!.value as { full_name: string; position: string };
+    // full_name should be capitalized, position should NOT duplicate the name
+    expect(val.full_name).toBe("Гайдуков");
+    expect(val.position).toBe("—"); // placeholder, not "гайдуков"
+  });
+
+  it("extracts signatory with FIO and position correctly", () => {
+    const r = extractFromText("мастер - инженер ЦРЭС АО ОЭК Селиванов В.Ю.", SRC);
+    const sign1 = r.fields.find((f) => f.field_name === "signatories.sign1_customer");
+    expect(sign1).toBeDefined();
+    const val = sign1!.value as { full_name: string; position: string };
+    expect(val.full_name).toBe("Селиванов В.Ю.");
+    // position should not contain the FIO
+    expect(val.position).not.toContain("Селиванов");
+  });
+
   // === All fields have correct source metadata ===
 
   it("all fields have source_type manual_text", () => {

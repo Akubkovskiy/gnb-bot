@@ -300,6 +300,52 @@ describe("Source priority and conflicts", () => {
     expect(store.get(draft.id)!.data.customer).toBe("Confirmed");
   });
 
+  it("organization with ОГРН/ИНН is not overwritten by shorter abbreviation at same priority (Bug 3)", () => {
+    const draft = store.create(1);
+    // First: АОСР gives full org with ОГРН
+    const fullOrg = {
+      id: "oek",
+      name: 'АО «Объединенная энергетическая компания» ОГРН 1057746394155, ИНН 7720522853, г. Москва',
+      short_name: "АО «ОЭК»",
+      ogrn: "1057746394155",
+      inn: "7720522853",
+      legal_address: "115035, г. Москва, Раушская наб., д.8",
+    };
+    store.setField(draft.id, makeField("organizations.customer", fullOrg, { source_type: "prior_act", source_id: "s1" }));
+
+    // Then: Excel gives short version at same priority (prior_act = 3, excel = 3)
+    const shortOrg = { name: 'АО "ОЭК"', short_name: 'АО "ОЭК"' };
+    const result = store.setField(draft.id, makeField("organizations.customer", shortOrg, { source_type: "excel", source_id: "s2" }));
+
+    // Should NOT overwrite — the full org has richer legal details
+    expect(result).toEqual({ updated: false, conflict: false });
+    const loaded = store.get(draft.id)!;
+    const orgField = loaded.fields.find((f) => f.field_name === "organizations.customer" && !f.conflict_with_existing);
+    expect((orgField?.value as any).ogrn).toBe("1057746394155");
+  });
+
+  it("organization field IS overwritten when new value has richer details", () => {
+    const draft = store.create(1);
+    // First: Excel gives short version
+    const shortOrg = { name: 'АО "ОЭК"', short_name: 'АО "ОЭК"' };
+    store.setField(draft.id, makeField("organizations.customer", shortOrg, { source_type: "excel", source_id: "s1" }));
+
+    // Then: prior_act gives full org (same priority level)
+    const fullOrg = {
+      name: 'АО «Объединенная энергетическая компания»',
+      short_name: "АО «ОЭК»",
+      ogrn: "1057746394155",
+      inn: "7720522853",
+    };
+    const result = store.setField(draft.id, makeField("organizations.customer", fullOrg, { source_type: "prior_act", source_id: "s2" }));
+
+    // Should overwrite — the new value has richer details
+    expect(result).toEqual({ updated: true, conflict: false });
+    const loaded = store.get(draft.id)!;
+    const orgField = loaded.fields.find((f) => f.field_name === "organizations.customer" && !f.conflict_with_existing);
+    expect((orgField?.value as any).ogrn).toBe("1057746394155");
+  });
+
   it("confirmed field CAN be overwritten by manual_text", () => {
     const draft = store.create(1);
     store.setField(draft.id, makeField("customer", "Confirmed", { source_type: "pdf", source_id: "s1" }));

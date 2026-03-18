@@ -11,7 +11,7 @@ Move from two loosely related Excel templates to one master workbook with:
 
 Current master draft file:
 
-- `C:\Users\kubko\projects\gnb-bot\templates\GNB-master-template-v3.xlsx`
+- `C:\Users\kubko\projects\gnb-bot\templates\GNB-master-template-final.xlsx`
 
 Reference source files:
 

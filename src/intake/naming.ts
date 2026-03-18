@@ -11,7 +11,7 @@ import type { RegistryDocument, NameProposal, DocumentKind } from "./document-re
 
 const KIND_LABELS: Record<DocumentKind, string> = {
   executive_scheme: "ИС ГНБ",
-  pipe_passport: "Паспорт трубы",
+  pipe_passport: "Паспорт качества",
   pipe_certificate: "Сертификат трубы",
   bentonite_passport: "Паспорт Бентонит",
   ukpt_doc: "УКПТ",

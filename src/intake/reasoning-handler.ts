@@ -160,6 +160,34 @@ export async function processTextWithReasoning(
               }
               if (!person) {
                 logger.warn({ personId: signatoryUpdate.personId, role: signatoryUpdate.role }, "Person not found in DB for signatory assignment");
+                // Fall back to regex-extracted signatory data from the original text
+                const fieldName = roleToFieldName(signatoryUpdate.role);
+                if (fieldName) {
+                  const regexSig = regexResult.fields.find((f) => f.field_name === fieldName);
+                  if (regexSig) {
+                    // Use the regex-extracted signatory with manual_text priority
+                    fieldsToApply.push({ ...regexSig, source_id: sourceId, source_type: "manual_text" });
+                  } else if (signatoryUpdate.newPersonData) {
+                    // Use Claude's newPersonData as a best-effort entry
+                    const npd = signatoryUpdate.newPersonData as Record<string, string>;
+                    fieldsToApply.push({
+                      field_name: fieldName,
+                      value: {
+                        person_id: "",
+                        role: signatoryUpdate.role,
+                        org_description: npd.org ?? "",
+                        position: npd.position ?? "—",
+                        full_name: npd.fullName ?? signatoryUpdate.personId,
+                        aosr_full_line: "",
+                      },
+                      source_id: sourceId,
+                      source_type: "manual_text",
+                      confidence: "medium",
+                      confirmed_by_owner: false,
+                      conflict_with_existing: false,
+                    });
+                  }
+                }
                 continue;
               }
 

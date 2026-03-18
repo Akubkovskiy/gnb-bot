@@ -2,7 +2,7 @@
 
 Canonical target workbook:
 
-- `C:\Users\kubko\projects\gnb-bot\templates\GNB-master-template-v3.xlsx`
+- `C:\Users\kubko\projects\gnb-bot\templates\GNB-master-template-final.xlsx`
 
 Canonical source sheet:
 

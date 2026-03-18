@@ -4,7 +4,7 @@ Goal: produce one final master workbook so DB/domain data lands in a single `00 
 
 Working file:
 
-- `C:\Users\kubko\projects\gnb-bot\templates\GNB-master-template-v3.xlsx`
+- `C:\Users\kubko\projects\gnb-bot\templates\GNB-master-template-final.xlsx`
 
 Reference files:
 
@@ -45,7 +45,7 @@ Exit criteria:
 - [x] Rewire `02 Acts - Data` to read from `00 DATA`
 - [x] Preserve downstream formulas on acts pages
 - [x] Verify acts pages still render structurally correct
-- [ ] Remove stale/unused cells from acts data layer if safe
+- [x] Remove stale/unused cells from acts data layer if safe
 - [x] Identify and repair all `#REF!` in acts pages
 - [x] Remove external links from acts pages
 
@@ -59,7 +59,7 @@ Exit criteria:
 - [x] Move all compact AOSR raw fields to formulas from `00 DATA`
 - [x] Convert `14 AOSR - Page 1` to read from `13 AOSR - Data` / `00 DATA`
 - [x] Convert `15 AOSR - Page 2` to read from `13 AOSR - Data` / `00 DATA`
-- [ ] Eliminate page-to-page duplication unless layout requires it
+- [x] Eliminate page-to-page duplication unless layout requires it
 - [x] Eliminate all workbook-external links from AOSR pages
 
 Exit criteria:
@@ -84,8 +84,8 @@ Exit criteria:
 - [x] Workbook opens cleanly
 - [x] No external workbook links remain
 - [x] No `#REF!` remain
-- [ ] No hidden dependence on old split-template architecture
-- [ ] Print sheets still look structurally correct
+- [x] No hidden dependence on old split-template architecture
+- [x] Print sheets still look structurally correct
 - [x] `00 DATA` can be inspected by a human and understood
 
 Exit criteria:
@@ -94,9 +94,9 @@ Exit criteria:
 
 ## Phase T6 — Runtime Adoption Prep
 
-- [ ] Document exact renderer changes needed
-- [ ] Document whether one output file or two exports should be generated
-- [ ] Document which current template files can be retired
+- [x] Document exact renderer changes needed
+- [x] Document whether one output file or two exports should be generated
+- [x] Document which current template files can be retired
 - [ ] Keep runtime untouched until explicit go-ahead
 
 Exit criteria:

@@ -30,7 +30,7 @@ Produce a final master workbook so that:
 
 Primary working workbook:
 
-- `C:\Users\kubko\projects\gnb-bot\templates\GNB-master-template-v3.xlsx`
+- `C:\Users\kubko\projects\gnb-bot\templates\GNB-master-template-final.xlsx`
 
 Reference source templates:
 
@@ -69,7 +69,7 @@ Reference docs:
 
 Work only in:
 
-- `GNB-master-template-v3.xlsx`
+- `GNB-master-template-final.xlsx`
 
 Create helper scripts/docs if needed, but do not touch the current runtime template names.
 

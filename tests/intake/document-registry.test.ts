@@ -101,7 +101,7 @@ describe("naming", () => {
   it("builds complete proposal for pipe passport with number and date", () => {
     const doc = makeRegDoc({ kind: "pipe_passport", doc_number: "13043", doc_date: "18.10.2025", original_file_name: "scan.pdf" });
     const p = buildNameProposal(doc);
-    expect(p.suggested_name).toContain("Паспорт трубы");
+    expect(p.suggested_name).toContain("Паспорт качества");
     expect(p.suggested_name).toContain("13043");
     expect(p.suggested_name).toContain("18.10.2025");
     expect(p.complete).toBe(true);
@@ -169,7 +169,7 @@ describe("naming", () => {
   });
 
   it("validateNameProposal rejects names without extension", () => {
-    expect(validateNameProposal("Паспорт трубы").valid).toBe(false);
+    expect(validateNameProposal("Паспорт качества").valid).toBe(false);
   });
 
   it("validateNameProposal accepts good names", () => {
@@ -181,6 +181,29 @@ describe("naming", () => {
     const approved = applyApprovedName(doc, "Финальное имя.pdf");
     expect(approved.approved_name).toBe("Финальное имя.pdf");
     expect(approved.status).toBe("approved");
+  });
+});
+
+// === refineMaterialKind / deriveRegistryDocument regression (Bug 4) ===
+
+describe("material kind refinement", () => {
+  it("pipe_passport is NOT reclassified to cord_doc when summary mentions шнур (Bug 4)", () => {
+    // Simulates a pipe passport whose extraction summary mentions "шнур"
+    const doc = deriveRegistryDocument(
+      {
+        source_id: "doc-1",
+        source_type: "pdf",
+        doc_class: "passport_pipe",
+        received_at: new Date().toISOString(),
+        parse_status: "parsed",
+        short_summary: "Паспорт качества №13043 от 18.10.2025, труба ЭЛЕКТРОПАЙП 225/170, шнур в комплекте",
+      },
+      { id: "test", chat_id: 1, status: "collecting", created_at: "", updated_at: "", sources: [], fields: [], data: {} },
+    );
+    // Kind must remain pipe_passport, not become cord_doc
+    expect(doc.kind).toBe("pipe_passport");
+    expect(doc.name_proposal?.suggested_name).toContain("Паспорт качества");
+    expect(doc.name_proposal?.suggested_name).not.toContain("Шнур");
   });
 });
 
@@ -277,7 +300,7 @@ describe("document-registry", () => {
     expect(doc.kind).toBe("pipe_passport");
     expect(doc.doc_number).toBe("13043");
     expect(doc.name_proposal).toBeDefined();
-    expect(doc.name_proposal!.suggested_name).toContain("Паспорт трубы");
+    expect(doc.name_proposal!.suggested_name).toContain("Паспорт качества");
   });
 });
 

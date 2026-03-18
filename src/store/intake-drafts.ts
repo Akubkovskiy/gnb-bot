@@ -209,6 +209,14 @@ export class IntakeDraftStore {
 
     // Higher-priority source wins over lower-priority
     if (sourcePriority(field.source_type) <= sourcePriority(existing.source_type)) {
+      // For organization fields with equal priority, prefer the value with richer
+      // legal details (ОГРН, ИНН, legal_address) over a shorter abbreviation.
+      if (sourcePriority(field.source_type) === sourcePriority(existing.source_type)
+        && isOrganizationField(field.field_name)
+        && hasRicherLegalDetails(existing.value, field.value)) {
+        // Existing value has more legal detail — don't overwrite, silently skip
+        return { updated: false, conflict: false };
+      }
       draft.fields[existingIdx] = field;
       this.applyFieldToData(draft, field);
       draft.updated_at = new Date().toISOString();
@@ -415,6 +423,34 @@ const SOURCE_PRIORITY: Record<string, number> = {
 
 function sourcePriority(type: string): number {
   return SOURCE_PRIORITY[type] ?? 99;
+}
+
+/** Check if a field name is an organization field. */
+function isOrganizationField(fieldName: FieldName): boolean {
+  return fieldName.startsWith("organizations.");
+}
+
+/**
+ * Check if value `a` has richer legal details than value `b`.
+ * Returns true if `a` contains ОГРН/ИНН/legal address and `b` does not,
+ * or if `a` stringifies to significantly longer text (indicating full legal details).
+ */
+function hasRicherLegalDetails(a: unknown, b: unknown): boolean {
+  const aStr = typeof a === "string" ? a : JSON.stringify(a ?? "");
+  const bStr = typeof b === "string" ? b : JSON.stringify(b ?? "");
+
+  const legalPattern = /ОГРН|ИНН|ogrn|inn|legal_address/i;
+  const aHasLegal = legalPattern.test(aStr);
+  const bHasLegal = legalPattern.test(bStr);
+
+  // If existing has legal details and new doesn't, existing is richer
+  if (aHasLegal && !bHasLegal) return true;
+
+  // If both have or both lack legal patterns, compare by length
+  // (full org details are typically 3x+ longer than abbreviations)
+  if (!aHasLegal && !bHasLegal && aStr.length > bStr.length * 2) return true;
+
+  return false;
 }
 
 /** Simple equality for field values — avoids false conflicts for identical data. */

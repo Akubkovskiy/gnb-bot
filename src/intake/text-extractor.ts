@@ -167,13 +167,19 @@ export function extractFromText(text: string, sourceId: string): ExtractionResul
       const text = sigMatch[1].trim();
       // Extract FIO
       const fioMatch = text.match(/([А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.[А-ЯЁ]\.?)/);
-      const fullName = fioMatch ? fioMatch[1] : text;
+      const fullName = fioMatch ? fioMatch[1] : capitalizeFirst(text);
       const orgMatch = text.match(/((?:АО|ООО|АНО|ЗАО|ИП)\s*[«"][^»"]+[»"])/);
       const org = orgMatch ? orgMatch[1] : "";
       let position = text;
       if (fioMatch) position = position.replace(fioMatch[0], "");
       if (orgMatch) position = position.replace(orgMatch[0], "");
       position = position.replace(/[,;—\-]+/g, " ").replace(/\s+/g, " ").trim();
+
+      // If position ended up as the same as fullName (no separate position info),
+      // use a placeholder to avoid duplicating the name
+      if (!fioMatch && position.toLowerCase() === fullName.toLowerCase()) {
+        position = "";
+      }
 
       fields.push(makeField(field, {
         person_id: "",
@@ -193,7 +199,13 @@ export function extractFromText(text: string, sourceId: string): ExtractionResul
   return { fields, unmatched };
 }
 
-// === Helper ===
+// === Helpers ===
+
+/** Capitalize first letter of a surname (e.g. "гайдуков" → "Гайдуков"). */
+function capitalizeFirst(s: string): string {
+  if (!s) return s;
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+}
 
 function makeField(
   fieldName: FieldName,
