@@ -31,6 +31,18 @@ import { processTextWithReasoning, shouldUseReasoning } from "../intake/reasonin
 import { processKnowledgeIngest, persistIngestResult } from "../db/knowledge-ingest.js";
 import { getDb } from "../db/client.js";
 import { extractDocument, mapExtractionToFields } from "../intake/doc-extractor.js";
+import {
+  getIngestSession,
+  setIngestSession,
+  clearIngestSession,
+  hasActiveIngestSession,
+  isSaveTrigger,
+  handleIngestTextAnswer,
+  buildQuestionsResponse,
+  buildPersistedResponse,
+  buildFailedResponse,
+  type IngestResponse,
+} from "../intake/ingest-session.js";
 
 const CLAUDE_SYSTEM = fs.readFileSync(
   path.join(process.cwd(), "CLAUDE.md"),
@@ -183,6 +195,87 @@ async function sendIntakeResponse(
   }
 }
 
+/** Send an IngestResponse with optional keyboard. */
+async function sendIngestResponse(
+  ctx: Context,
+  result: IngestResponse,
+): Promise<void> {
+  const parts = splitMessage(result.message);
+  for (let i = 0; i < parts.length; i++) {
+    const isLast = i === parts.length - 1;
+    if (isLast && result.buttons) {
+      await ctx.reply(parts[i], { reply_markup: buildKeyboard(result.buttons) });
+    } else {
+      await ctx.reply(parts[i]);
+    }
+  }
+}
+
+/**
+ * Run standalone knowledge ingest for a document file.
+ * Downloads, extracts, calls Claude reasoning, handles session.
+ */
+async function runStandaloneIngest(
+  ctx: Context,
+  bot: Bot,
+  fileId: string,
+  fileName: string,
+  statusMsgId: number,
+): Promise<void> {
+  const chatId = ctx.chat!.id;
+  try {
+    const localPath = await downloadTelegramFile(bot, fileId, fileName);
+    const extraction = await extractDocument(localPath, askClaude);
+
+    const memDir = getMemoryDir();
+    const db = getDb(memDir);
+    const ingestResult = await processKnowledgeIngest(
+      db, extraction as any, extraction.doc_class, fileName, askClaude,
+    );
+
+    if (ingestResult && ingestResult.missingLinks.length === 0 && ingestResult.questionsForOwner.length === 0) {
+      // All links resolved — persist immediately
+      const { documentId } = persistIngestResult(db, ingestResult, localPath);
+      fs.unlinkSync(localPath);
+      const resp = buildPersistedResponse(ingestResult.summary, documentId, ingestResult.suggestedLinks);
+      await ctx.api.editMessageText(chatId, statusMsgId, resp.message);
+      clearIngestSession(chatId);
+      return;
+    }
+
+    if (ingestResult && (ingestResult.questionsForOwner.length > 0 || ingestResult.missingLinks.length > 0)) {
+      // Missing links — save session, ask owner
+      setIngestSession(chatId, {
+        state: "awaiting_link",
+        pendingResult: ingestResult,
+        filePath: localPath,
+        fileName,
+        startedAt: Date.now(),
+      });
+      const resp = buildQuestionsResponse(ingestResult);
+      await ctx.api.editMessageText(chatId, statusMsgId, resp.message);
+      // Send buttons separately (editMessageText doesn't support reply_markup easily)
+      if (resp.buttons) {
+        await ctx.reply("Выберите действие:", { reply_markup: buildKeyboard(resp.buttons) });
+      }
+      return;
+    }
+
+    // Ingest returned null or no useful result
+    fs.unlinkSync(localPath);
+    clearIngestSession(chatId);
+    const resp = buildFailedResponse(fileName, "Не удалось классифицировать документ");
+    await ctx.api.editMessageText(chatId, statusMsgId, resp.message);
+  } catch (err) {
+    logger.error({ err, fileName }, "Standalone ingest error");
+    clearIngestSession(chatId);
+    await ctx.api.editMessageText(
+      chatId, statusMsgId,
+      `❌ Ошибка обработки ${fileName}: ${err instanceof Error ? err.message : "неизвестная ошибка"}`,
+    );
+  }
+}
+
 export function registerHandlers(bot: Bot): void {
   const stores = initIntakeStores();
 
@@ -194,12 +287,14 @@ export function registerHandlers(bot: Bot): void {
       "Умею:\n" +
       "• Создавать комплект актов ГНБ (внутренние + АОСР)\n" +
       "• Распознавать документы (PDF, фото, Excel)\n" +
-      "• Собирать Паспорт ГНБ из разных источников\n\n" +
+      "• Собирать Паспорт ГНБ из разных источников\n" +
+      "• Сохранять документы в базу знаний (паспорта, приказы, сертификаты)\n\n" +
       "Команды:\n" +
       "/new_gnb — новый комплект актов\n" +
       "/review_gnb — сводка текущего черновика\n" +
       "/cancel — отменить черновик\n" +
       "/help — справка\n\n" +
+      "Сохранение в базу: отправь файл с подписью «сохрани»\n" +
       "Отправь текст, фото или файл — я помогу!",
     );
   });
@@ -255,6 +350,49 @@ export function registerHandlers(bot: Bot): void {
     const chatId = ctx.chat?.id;
     if (!chatId) return;
 
+    // Handle ingest callbacks
+    if (data.startsWith("ingest:")) {
+      try {
+        await ctx.answerCallbackQuery();
+        const session = getIngestSession(chatId);
+
+        if (data === "ingest:cancel") {
+          if (session?.filePath) {
+            try { fs.unlinkSync(session.filePath); } catch { /* ignore */ }
+          }
+          clearIngestSession(chatId);
+          await ctx.reply("Сохранение отменено.");
+          return;
+        }
+
+        if (data === "ingest:skip_links" && session?.pendingResult) {
+          // Persist without missing links
+          const result = session.pendingResult;
+          result.missingLinks = [];
+          result.questionsForOwner = [];
+
+          const memDir = getMemoryDir();
+          const db = getDb(memDir);
+          const { documentId } = persistIngestResult(db, result, session.filePath);
+
+          if (session.filePath) {
+            try { fs.unlinkSync(session.filePath); } catch { /* ignore */ }
+          }
+          clearIngestSession(chatId);
+
+          const resp = buildPersistedResponse(result.summary, documentId, result.suggestedLinks);
+          await ctx.reply(resp.message);
+          return;
+        }
+
+        await ctx.reply("Неизвестное действие.");
+      } catch (err) {
+        logger.error({ err, data }, "Ошибка ingest callback");
+        await ctx.reply("Ошибка обработки.");
+      }
+      return;
+    }
+
     try {
       const result = handleCallback(chatId, data, stores);
       if (result) {
@@ -302,6 +440,18 @@ export function registerHandlers(bot: Bot): void {
         await ctx.api.editMessageText(chatId, status.message_id, `❌ Ошибка: ${err instanceof Error ? err.message : "неизвестная ошибка"}`);
         return;
       }
+    }
+
+    // Check if owner wants to save data (caption trigger or active ingest)
+    const caption = ctx.message.caption?.toLowerCase().trim() ?? "";
+    const wantsSave = isSaveTrigger(caption);
+
+    if (wantsSave) {
+      const photoFileName = `photo_${Date.now()}.jpg`;
+      const status = await ctx.reply(`📥 Сохраняю данные из фото...`);
+      const photo = ctx.message.photo[ctx.message.photo.length - 1];
+      await runStandaloneIngest(ctx, bot, photo.file_id, photoFileName, status.message_id);
+      return;
     }
 
     // Fallback: general OCR
@@ -356,47 +506,15 @@ export function registerHandlers(bot: Bot): void {
       }
     }
 
-    // Knowledge ingest: no active draft, but document could be useful for DB
-    if ([".pdf", ".xls", ".xlsx"].includes(ext)) {
+    // Knowledge ingest: no active draft, document could be useful for DB.
+    // Trigger: caption says "сохрани" OR document is PDF/Excel (auto-ingest attempt).
+    const docCaption = ctx.message?.caption?.toLowerCase().trim() ?? "";
+    const docWantsSave = isSaveTrigger(docCaption);
+
+    if ([".pdf", ".xls", ".xlsx", ".jpg", ".jpeg", ".png"].includes(ext) && (docWantsSave || [".pdf", ".xls", ".xlsx"].includes(ext))) {
       const status = await ctx.reply(`📥 Сохраняю данные из ${fileName}...`);
-      try {
-        const localPath = await downloadTelegramFile(bot, doc.file_id, fileName);
-        const extraction = await extractDocument(localPath, askClaude);
-
-        // Try knowledge ingest via Claude reasoning
-        const memDir = getMemoryDir();
-        const db = getDb(memDir);
-        const ingestResult = await processKnowledgeIngest(
-          db, extraction as any, extraction.doc_class, fileName, askClaude,
-        );
-
-        fs.unlinkSync(localPath);
-
-        if (ingestResult && ingestResult.missingLinks.length === 0) {
-          // All links resolved — persist immediately
-          const { documentId } = persistIngestResult(db, ingestResult, localPath);
-          await ctx.api.editMessageText(chatId, status.message_id,
-            `✅ Сохранено в базу: ${ingestResult.summary}\nID: ${documentId}`);
-          return;
-        } else if (ingestResult && ingestResult.questionsForOwner.length > 0) {
-          // Missing links — ask owner
-          await ctx.api.editMessageText(chatId, status.message_id,
-            `📎 ${ingestResult.summary}\n\n❓ ${ingestResult.questionsForOwner.join("\n❓ ")}`);
-          return;
-        } else if (ingestResult) {
-          await ctx.api.editMessageText(chatId, status.message_id,
-            `📎 ${ingestResult.summary}\nДля сохранения в базу начните /new_gnb.`);
-          return;
-        }
-
-        // Ingest failed — fall through to general handler
-        await ctx.api.editMessageText(chatId, status.message_id,
-          `📎 Получен ${fileName}. Для работы с документом начните /new_gnb.`);
-        return;
-      } catch (err) {
-        logger.error({ err }, "Knowledge ingest error");
-        // Fall through to general handler
-      }
+      await runStandaloneIngest(ctx, bot, doc.file_id, fileName, status.message_id);
+      return;
     }
 
     // Fallback: general document handling
@@ -452,6 +570,46 @@ export function registerHandlers(bot: Bot): void {
     if (!text || text.startsWith("/")) return;
 
     const chatId = ctx.chat.id;
+
+    // Check for active ingest session (standalone save flow)
+    if (hasActiveIngestSession(chatId)) {
+      try {
+        const { updated, result } = handleIngestTextAnswer(chatId, text);
+        if (!updated) {
+          // Cancelled or no session
+          await ctx.reply("Сохранение отменено.");
+          return;
+        }
+        if (result) {
+          // Owner answered — try to persist
+          const memDir = getMemoryDir();
+          const db = getDb(memDir);
+          const session = getIngestSession(chatId);
+          const { documentId } = persistIngestResult(db, result, session?.filePath);
+          if (session?.filePath) {
+            try { fs.unlinkSync(session.filePath); } catch { /* ignore */ }
+          }
+          clearIngestSession(chatId);
+          const resp = buildPersistedResponse(result.summary, documentId, result.suggestedLinks);
+          await ctx.reply(resp.message);
+          return;
+        }
+      } catch (err) {
+        logger.error({ err }, "Ingest text answer error");
+        clearIngestSession(chatId);
+        await ctx.reply("Ошибка при сохранении. Попробуйте снова.");
+        return;
+      }
+    }
+
+    // "save data" trigger without a document — tell owner to send a document
+    if (isSaveTrigger(text) && !hasActiveIntake(chatId)) {
+      await ctx.reply(
+        "📎 Пришлите документ (PDF, фото, Excel) с подписью «сохрани» — я извлеку данные и сохраню в базу.\n" +
+        "Или отправьте файл, а потом напишите «сохрани».",
+      );
+      return;
+    }
 
     // Check for active intake session
     try {
