@@ -180,13 +180,13 @@ describe("inheritance", () => {
 // === Conflicts ===
 
 describe("conflicts", () => {
-  it("detectBaseConflicts finds differing owner-authority field", () => {
+  it("detectBaseConflicts finds differing owner-authority field from non-manual source", () => {
     const base = seedBaseTransition();
     const draft = store.create(1);
     applyBaseTransitionToDraft(draft.id, base, store);
 
-    // pipe (owner-authority, semi-stable) differs from base
-    store.setField(draft.id, makeField("pipe", { mark: "Другая труба", diameter: "d=160", diameter_mm: 160 }));
+    // pipe (owner-authority, semi-stable) differs from base — from excel source, not manual_text
+    store.setField(draft.id, makeField("pipe", { mark: "Другая труба", diameter: "d=160", diameter_mm: 160 }, { source_type: "excel", source_id: "excel-1" }));
 
     const loaded = store.get(draft.id)!;
     const conflicts = detectBaseConflicts(loaded, base);
@@ -194,6 +194,21 @@ describe("conflicts", () => {
     const pipeConflict = conflicts.find((c) => c.field_name === "pipe");
     expect(pipeConflict).toBeDefined();
     expect(pipeConflict!.requires_owner_confirmation).toBe(true);
+  });
+
+  it("detectBaseConflicts skips manual_text fields (owner override, no ambiguity)", () => {
+    const base = seedBaseTransition();
+    const draft = store.create(1);
+    applyBaseTransitionToDraft(draft.id, base, store);
+
+    // pipe differs from base but source is manual_text — owner explicitly set it
+    store.setField(draft.id, makeField("pipe", { mark: "Другая труба", diameter: "d=160", diameter_mm: 160 }));
+
+    const loaded = store.get(draft.id)!;
+    const conflicts = detectBaseConflicts(loaded, base);
+
+    const pipeConflict = conflicts.find((c) => c.field_name === "pipe");
+    expect(pipeConflict).toBeUndefined();
   });
 
   it("detectBaseConflicts ignores inherited fields (same source)", () => {

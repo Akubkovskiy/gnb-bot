@@ -22,6 +22,7 @@ export function detectBaseConflicts(
   for (const field of draft.fields) {
     if (field.conflict_with_existing) continue; // already a conflict candidate
     if (field.source_id?.startsWith("base:")) continue; // inherited from same base
+    if (field.source_type === "manual_text") continue; // owner explicitly set — highest priority, no ambiguity
     if (getVolatility(field.field_name) === "volatile") continue; // volatile fields expected to differ
     if (isRoutingField(field.field_name)) continue; // routing context ≠ doc fields
     if (isSchemeAuthoritative(field.field_name)) continue; // scheme auto-applied, shown as "changed" not conflict

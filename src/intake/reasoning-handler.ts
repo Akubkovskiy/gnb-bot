@@ -134,19 +134,43 @@ export async function processTextWithReasoning(
           return null;
         }
 
-        fieldsToApply = reasoningOutput.fieldUpdates.map((fieldUpdate) => ({
-          field_name: fieldUpdate.fieldName as FieldName,
-          value: fieldUpdate.value,
-          source_id: sourceId,
-          source_type: "manual_text" as const,
-          confidence: fieldUpdate.confidence,
-          confirmed_by_owner: false,
-          conflict_with_existing: false,
-        }));
+        fieldsToApply = reasoningOutput.fieldUpdates
+          .filter((fieldUpdate) => {
+            // Reject sub-field names like "signatories.sign1_customer.position"
+            // Valid FieldName has at most 2 segments (e.g., "signatories.sign1_customer")
+            const segments = fieldUpdate.fieldName.split(".");
+            if (segments.length > 2) {
+              logger.warn({ fieldName: fieldUpdate.fieldName }, "Rejected invalid sub-field name from reasoning");
+              return false;
+            }
+            return true;
+          })
+          .map((fieldUpdate) => ({
+            field_name: fieldUpdate.fieldName as FieldName,
+            value: fieldUpdate.value,
+            source_id: sourceId,
+            source_type: "manual_text" as const,
+            confidence: fieldUpdate.confidence,
+            confirmed_by_owner: false,
+            conflict_with_existing: false,
+          }));
 
         if (reasoningOutput.signatoryUpdates?.length) {
           const { createRepos } = await import("../db/repositories.js");
           const repos = createRepos(db);
+
+          // Track person_ids already assigned in this draft to prevent duplicates
+          const assignedPersonIds = new Set<string>();
+          for (const f of draft.fields) {
+            if (f.field_name.startsWith("signatories.") && !f.conflict_with_existing) {
+              const val = f.value as Record<string, unknown> | null;
+              if (val?.person_id && typeof val.person_id === "string" && val.person_id !== "") {
+                assignedPersonIds.add(val.person_id);
+              }
+            }
+          }
+          // Also track person_ids being assigned in this batch
+          const batchPersonIds = new Set<string>();
 
           for (const signatoryUpdate of reasoningOutput.signatoryUpdates) {
             if (signatoryUpdate.action === "assign") {
@@ -191,11 +215,28 @@ export async function processTextWithReasoning(
                 continue;
               }
 
+              // Check for duplicate: if this person is already assigned to another role, skip
+              const targetFieldName = roleToFieldName(signatoryUpdate.role);
+              if (!targetFieldName) continue;
+
+              if (assignedPersonIds.has(person.id) || batchPersonIds.has(person.id)) {
+                // Person already assigned to another role — check if it's a different role
+                const existingRole = draft.fields.find(
+                  (f) => f.field_name.startsWith("signatories.") && !f.conflict_with_existing
+                    && f.field_name !== targetFieldName
+                    && (f.value as Record<string, unknown>)?.person_id === person.id,
+                );
+                if (existingRole) {
+                  logger.warn({ personId: person.id, role: signatoryUpdate.role, existingRole: existingRole.field_name }, "Person already assigned to another signatory role, skipping duplicate");
+                  continue;
+                }
+              }
+
               const org = person.org_id ? repos.orgs.getById(person.org_id) : undefined;
               const docs = repos.personDocs.getCurrentByPersonId(signatoryUpdate.personId);
-              const fieldName = roleToFieldName(signatoryUpdate.role);
+              const fieldName = targetFieldName;
 
-              if (!fieldName) continue;
+              batchPersonIds.add(person.id);
 
               fieldsToApply.push({
                 field_name: fieldName,
