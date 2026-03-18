@@ -223,7 +223,7 @@ async function sendIntakeResponse(
   ctx: Context,
   result: IntakeResponse,
 ): Promise<void> {
-  const parts = splitMessage(result.message);
+  const parts = splitMessage(stripMarkdown(result.message));
   // Only attach keyboard to last message part
   for (let i = 0; i < parts.length; i++) {
     const isLast = i === parts.length - 1;
@@ -240,7 +240,7 @@ async function sendIngestResponse(
   ctx: Context,
   result: IngestResponse,
 ): Promise<void> {
-  const parts = splitMessage(result.message);
+  const parts = splitMessage(stripMarkdown(result.message));
   for (let i = 0; i < parts.length; i++) {
     const isLast = i === parts.length - 1;
     if (isLast && result.buttons) {

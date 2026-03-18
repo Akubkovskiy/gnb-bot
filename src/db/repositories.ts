@@ -4,7 +4,7 @@
  * These are CODE, not skills. Deterministic, testable, no LLM.
  */
 
-import { eq, like, and, isNull, desc } from "drizzle-orm";
+import { eq, like, and, isNull, desc, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import * as s from "./schema.js";
 
@@ -34,15 +34,16 @@ export class PeopleRepo {
   getById(id: string) { return this.db.select().from(s.people).where(eq(s.people.id, id)).get(); }
 
   findBySurname(surname: string) {
-    return this.db.select().from(s.people)
-      .where(like(s.people.surname, `%${surname}%`))
-      .all();
+    // SQLite LIKE/LOWER don't handle Cyrillic case — filter in JS
+    const lower = surname.toLowerCase();
+    return this.db.select().from(s.people).all()
+      .filter((p) => p.surname?.toLowerCase().includes(lower));
   }
 
   findByName(query: string) {
-    return this.db.select().from(s.people)
-      .where(like(s.people.full_name, `%${query}%`))
-      .all();
+    const lower = query.toLowerCase();
+    return this.db.select().from(s.people).all()
+      .filter((p) => p.full_name?.toLowerCase().includes(lower));
   }
 
   upsert(person: typeof s.people.$inferInsert) {

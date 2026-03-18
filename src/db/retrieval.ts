@@ -5,7 +5,7 @@
  * Skills receive retrieval results as structured context.
  */
 
-import { eq, like, and, isNull, desc, or } from "drizzle-orm";
+import { eq, like, and, isNull, desc, or, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import * as s from "./schema.js";
 
@@ -70,10 +70,13 @@ export interface DraftKnowledgeContext {
  * Returns full profile with org, docs, role history, transition history.
  */
 export function findPersonByName(db: Db, query: string): PersonProfile[] {
-  const pattern = `%${query}%`;
-  const rows = db.select().from(s.people)
-    .where(or(like(s.people.surname, pattern), like(s.people.full_name, pattern)))
-    .all();
+  // SQLite LIKE/LOWER don't handle Cyrillic case — filter in JS
+  const lower = query.toLowerCase();
+  const rows = db.select().from(s.people).all()
+    .filter((p) =>
+      p.surname?.toLowerCase().includes(lower)
+      || p.full_name?.toLowerCase().includes(lower),
+    );
 
   return rows
     .map((person) => buildPersonProfile(db, person))
