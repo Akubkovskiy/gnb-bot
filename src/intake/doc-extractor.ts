@@ -437,11 +437,31 @@ function parseSignatoryText(v: unknown): unknown {
   const orgMatch = text.match(/((?:АО|ООО|АНО|ЗАО|ИП)\s*[«"][^»"]+[»"])/);
   const org = orgMatch ? orgMatch[1] : "";
 
-  // Position = everything that's not FIO and not org
+  // Extract NRS (идентификационный номер / НРС №)
+  const nrsMatch = text.match(/(?:идентификационный\s*номер|НРС\s*[№#]?)\s*([A-ZА-Яа-я][\s\d-]+\d)\s*(?:от\s*([\d.]+))?/i);
+  const nrsId = nrsMatch ? nrsMatch[1].replace(/\s+/g, "").trim() : undefined;
+  const nrsDate = nrsMatch ? nrsMatch[2] : undefined;
+
+  // Extract order/decree (приказ / распоряжение)
+  const orderMatch = text.match(/(приказ|распоряжение)\s*[№#]?\s*([\d/\-а-яА-Яa-zA-Z]+)\s*(?:от\s*([\d.]+))?/i);
+  const orderType = orderMatch ? orderMatch[1].toLowerCase() : undefined;
+  const orderNumber = orderMatch ? orderMatch[2].trim() : undefined;
+  const orderDate = orderMatch ? orderMatch[3] : undefined;
+
+  // Position = everything that's not FIO, not org, not NRS/order
   let position = text;
   if (fioMatch) position = position.replace(fioMatch[0], "");
   if (orgMatch) position = position.replace(orgMatch[0], "");
+  if (nrsMatch) position = position.replace(nrsMatch[0], "");
+  if (orderMatch) position = position.replace(orderMatch[0], "");
   position = position.replace(/[,;—\-]+/g, " ").replace(/\s+/g, " ").trim();
+
+  // Build structured aosr_full_line
+  const aosrParts = [fullName];
+  if (position) aosrParts.push(position);
+  if (org) aosrParts.push(org);
+  if (nrsId) aosrParts.push(`НРС ${nrsId}${nrsDate ? " от " + nrsDate : ""}`);
+  if (orderNumber) aosrParts.push(`${orderType ?? "приказ"} №${orderNumber}${orderDate ? " от " + orderDate + "г." : ""}`);
 
   return {
     person_id: "",
@@ -449,7 +469,9 @@ function parseSignatoryText(v: unknown): unknown {
     org_description: org,
     position: position || "—",
     full_name: fullName,
-    aosr_full_line: text,
+    aosr_full_line: aosrParts.join(", "),
+    ...(nrsId ? { nrs_id: nrsId, nrs_date: nrsDate } : {}),
+    ...(orderType ? { order_type: orderType, order_number: orderNumber, order_date: orderDate } : {}),
   };
 }
 

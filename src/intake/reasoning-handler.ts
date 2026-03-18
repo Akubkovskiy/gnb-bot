@@ -131,7 +131,11 @@ export async function processTextWithReasoning(
         }
 
         if (reasoningOutput.intent === "confirmation") {
-          return null;
+          // If there are signatory updates, don't skip — apply them
+          if (!reasoningOutput.signatoryUpdates?.length && !reasoningOutput.fieldUpdates?.length) {
+            return null;
+          }
+          // Otherwise fall through to process field/signatory updates
         }
 
         fieldsToApply = reasoningOutput.fieldUpdates
