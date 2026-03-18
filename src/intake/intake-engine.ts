@@ -230,6 +230,25 @@ export async function handleIntakeDocument(
   const base = freshDraft.base_transition_id
     ? stores.transitions.get(freshDraft.base_transition_id) ?? undefined
     : undefined;
+
+  // Deduplicate updatedFields by field name — for merge fields (pipe),
+  // use the final merged value from the draft instead of raw _merge fragments
+  const deduped = new Map<string, { name: any; value: unknown }>();
+  for (const f of updatedDocFields) {
+    if (deduped.has(f.name)) {
+      // For pipe: use the merged value from the draft
+      const draftField = freshDraft.fields.find((df) => df.field_name === f.name && !df.conflict_with_existing);
+      deduped.set(f.name, { name: f.name, value: draftField?.value ?? f.value });
+    } else {
+      // First occurrence: also prefer draft value for _merge fields
+      const val = f.value && typeof f.value === "object" && "_merge" in (f.value as Record<string, unknown>)
+        ? freshDraft.fields.find((df) => df.field_name === f.name && !df.conflict_with_existing)?.value ?? f.value
+        : f.value;
+      deduped.set(f.name, { name: f.name, value: val });
+    }
+  }
+  const dedupedFields = [...deduped.values()];
+
   const responseMsg = buildIntakeResponse({
     docClass: result.doc_class,
     fileName,
@@ -240,7 +259,7 @@ export async function handleIntakeDocument(
     warnings: result.warnings,
     draft: freshDraft,
     base,
-    updatedFields: updatedDocFields,
+    updatedFields: dedupedFields,
     conflictFields: conflictDocFields,
     allExtractedFields: mappedFields.map((f) => ({ name: f.field_name, value: f.value })),
   });

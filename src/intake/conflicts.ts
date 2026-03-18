@@ -122,7 +122,6 @@ export function getBaseFieldValue(base: Transition, fieldName: FieldName): unkno
     case "gnb_params.plan_length": return base.gnb_params?.plan_length;
     case "gnb_params.pipe_count": return base.gnb_params?.pipe_count;
     case "gnb_params.drill_diameter": return base.gnb_params?.drill_diameter;
-    case "gnb_params.configuration": return base.gnb_params?.configuration;
     default: return undefined;
   }
 }

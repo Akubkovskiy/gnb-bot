@@ -111,7 +111,6 @@ export async function renderInternalActs(
   // Warnings for missing optional fields
   if (!transition.gnb_params.plan_length) warnings.push("plan_length не указан");
   if (!transition.gnb_params.drill_diameter) warnings.push("drill_diameter не указан");
-  if (!transition.gnb_params.configuration) warnings.push("configuration не указана");
 
   // Write output
   fs.mkdirSync(outputDir, { recursive: true });

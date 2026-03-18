@@ -83,7 +83,6 @@ describe("renderInternalActs", () => {
     // Warnings should be generated
     expect(result.warnings).toContain("plan_length не указан");
     expect(result.warnings).toContain("drill_diameter не указан");
-    expect(result.warnings).toContain("configuration не указана");
   });
 
   it("writes space for absent sign3", async () => {

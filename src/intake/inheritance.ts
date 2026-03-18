@@ -123,7 +123,6 @@ function extractInheritableFields(t: Transition): ExtractedField[] {
   // GNB params — only semi-stable ones
   if (t.gnb_params?.pipe_count) add("gnb_params.pipe_count", t.gnb_params.pipe_count);
   if (t.gnb_params?.drill_diameter) add("gnb_params.drill_diameter", t.gnb_params.drill_diameter);
-  if (t.gnb_params?.configuration) add("gnb_params.configuration", t.gnb_params.configuration);
 
   // Volatile fields intentionally NOT inherited:
   // gnb_number, gnb_number_short, start_date, end_date, act_date,

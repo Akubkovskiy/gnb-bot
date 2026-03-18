@@ -390,9 +390,6 @@ export class IntakeDraftStore {
       case "gnb_params.drill_diameter":
         d.gnb_params = { ...d.gnb_params, drill_diameter: v } as any;
         break;
-      case "gnb_params.configuration":
-        d.gnb_params = { ...d.gnb_params, configuration: v } as any;
-        break;
     }
   }
 }

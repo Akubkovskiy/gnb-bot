@@ -76,8 +76,7 @@ export type FieldName =
   | "pipe" | "materials"
   // GNB params
   | "gnb_params.profile_length" | "gnb_params.plan_length"
-  | "gnb_params.pipe_count" | "gnb_params.drill_diameter"
-  | "gnb_params.configuration";
+  | "gnb_params.pipe_count" | "gnb_params.drill_diameter";
 
 export interface ExtractedField {
   field_name: FieldName;

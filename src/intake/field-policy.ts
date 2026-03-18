@@ -38,7 +38,6 @@ export const FIELD_POLICIES: ExtendedFieldPolicy[] = [
   { fieldName: "signatories.tech_supervisor", volatility: "semi_stable", label: "Технадзор", authority: "owner" },
   { fieldName: "gnb_params.pipe_count", volatility: "semi_stable", label: "Количество труб", authority: "scheme" },
   { fieldName: "gnb_params.drill_diameter", volatility: "semi_stable", label: "Диаметр скважины", authority: "scheme" },
-  { fieldName: "gnb_params.configuration", volatility: "semi_stable", label: "Конфигурация", authority: "scheme" },
   { fieldName: "pipe", volatility: "semi_stable", label: "Труба (марка/паспорт)", authority: "owner" },
   { fieldName: "materials", volatility: "semi_stable", label: "Материалы", authority: "owner" },
   { fieldName: "project_number", volatility: "semi_stable", label: "Шифр проекта", authority: "scheme" },

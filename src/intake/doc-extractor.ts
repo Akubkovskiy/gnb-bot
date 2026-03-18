@@ -146,7 +146,6 @@ L_ПРОФИЛЬ: длина профильная (метры)
 ДИАМЕТР_ТРУБЫ: диаметр трубы (мм)
 КОЛ_ТРУБ: количество труб
 ДИАМЕТР_СКВАЖИНЫ: диаметр скважины (мм)
-КОНФИГУРАЦИЯ: конфигурация перехода
 ЗАКАЗЧИК: заказчик, если указан`;
 
     case "passport_pipe":
@@ -206,8 +205,7 @@ L_ПРОФИЛЬ: длина профильная (метры)
 L_ПЛАН: длина плановая (метры)
 L_ПРОФИЛЬ: длина профильная (метры)
 КОЛ_ТРУБ: количество труб
-ДИАМЕТР_СКВАЖИНЫ: диаметр скважины (мм)
-КОНФИГУРАЦИЯ: конфигурация перехода`;
+ДИАМЕТР_СКВАЖИНЫ: диаметр скважины (мм)`;
 
     default:
       // For photo_of_doc, unknown, materials, etc.
@@ -515,7 +513,6 @@ const FIELD_MAPPING: Partial<Record<DocClass, Record<string, FieldMapEntry>>> = 
     L_ПРОФИЛЬ: { fieldName: "gnb_params.profile_length" },
     КОЛ_ТРУБ: { fieldName: "gnb_params.pipe_count" },
     ДИАМЕТР_СКВАЖИНЫ: { fieldName: "gnb_params.drill_diameter" },
-    КОНФИГУРАЦИЯ: { fieldName: "gnb_params.configuration" },
   },
   passport_pipe: {
     МАРКА_ТРУБЫ: { fieldName: "pipe", transform: (v) => ({ _merge: true, mark: String(v) }) },
@@ -544,7 +541,6 @@ const FIELD_MAPPING: Partial<Record<DocClass, Record<string, FieldMapEntry>>> = 
     L_ПРОФИЛЬ: { fieldName: "gnb_params.profile_length" },
     КОЛ_ТРУБ: { fieldName: "gnb_params.pipe_count" },
     ДИАМЕТР_СКВАЖИНЫ: { fieldName: "gnb_params.drill_diameter" },
-    КОНФИГУРАЦИЯ: { fieldName: "gnb_params.configuration" },
     МАРКА_ТРУБЫ: { fieldName: "pipe", transform: (v) => ({ _merge: true, mark: String(v) }) },
     ПОДПИСАНТ_1: { fieldName: "signatories.sign1_customer", transform: parseSignatoryText },
     ПОДПИСАНТ_2: { fieldName: "signatories.sign2_contractor", transform: parseSignatoryText },
@@ -567,7 +563,6 @@ const FIELD_MAPPING: Partial<Record<DocClass, Record<string, FieldMapEntry>>> = 
     L_ПРОФИЛЬ: { fieldName: "gnb_params.profile_length" },
     КОЛ_ТРУБ: { fieldName: "gnb_params.pipe_count" },
     ДИАМЕТР_СКВАЖИНЫ: { fieldName: "gnb_params.drill_diameter" },
-    КОНФИГУРАЦИЯ: { fieldName: "gnb_params.configuration" },
     МАРКА_ТРУБЫ: { fieldName: "pipe", transform: (v) => ({ _merge: true, mark: String(v) }) },
     ПОДПИСАНТ_1: { fieldName: "signatories.sign1_customer", transform: parseSignatoryText },
     ПОДПИСАНТ_2: { fieldName: "signatories.sign2_contractor", transform: parseSignatoryText },
@@ -590,7 +585,6 @@ const FIELD_MAPPING: Partial<Record<DocClass, Record<string, FieldMapEntry>>> = 
     L_ПРОФИЛЬ: { fieldName: "gnb_params.profile_length" },
     КОЛ_ТРУБ: { fieldName: "gnb_params.pipe_count" },
     ДИАМЕТР_СКВАЖИНЫ: { fieldName: "gnb_params.drill_diameter" },
-    КОНФИГУРАЦИЯ: { fieldName: "gnb_params.configuration" },
     МАРКА_ТРУБЫ: { fieldName: "pipe", transform: (v) => ({ _merge: true, mark: String(v) }) },
     ПОДПИСАНТ_1: { fieldName: "signatories.sign1_customer", transform: parseSignatoryText },
     ПОДПИСАНТ_2: { fieldName: "signatories.sign2_contractor", transform: parseSignatoryText },

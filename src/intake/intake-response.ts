@@ -289,6 +289,14 @@ function formatValue(v: unknown): string {
     return obj.name as string;
   }
 
+  // Merge-mode pipe fragment (from doc-extractor)
+  if ("_merge" in obj) {
+    const { _merge, ...data } = obj;
+    const keys = Object.keys(data).filter((k) => data[k] != null && data[k] !== "");
+    if (keys.length === 0) return "—";
+    return keys.map((k) => `${data[k]}`).join(", ");
+  }
+
   // Fallback: extract key values instead of raw JSON
   const keys = Object.keys(obj).filter((k) => obj[k] != null && obj[k] !== "");
   if (keys.length <= 3) {
