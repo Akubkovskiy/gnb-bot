@@ -227,7 +227,12 @@ export async function processTextWithReasoning(
                     && (f.value as Record<string, unknown>)?.person_id === person.id,
                 );
                 if (existingRole) {
-                  logger.warn({ personId: person.id, role: signatoryUpdate.role, existingRole: existingRole.field_name }, "Person already assigned to another signatory role, skipping duplicate");
+                  logger.warn({ personId: person.id, role: signatoryUpdate.role, existingRole: existingRole.field_name }, "Person already assigned to another signatory role, falling back to regex");
+                  // Fall back to regex-extracted signatory for this role
+                  const regexSig = regexResult.fields.find((f) => f.field_name === targetFieldName);
+                  if (regexSig) {
+                    fieldsToApply.push({ ...regexSig, source_id: sourceId, source_type: "manual_text" });
+                  }
                   continue;
                 }
               }
