@@ -149,10 +149,17 @@ export class IntakeDraftStore {
       (f) => f.field_name === field.field_name && !f.conflict_with_existing,
     );
 
+    // Strip _merge from stored field value, but keep original for applyFieldToData merge logic
+    const originalField = field;
+    if (field.value && typeof field.value === "object" && "_merge" in (field.value as Record<string, unknown>)) {
+      const { _merge, ...cleanValue } = field.value as Record<string, unknown>;
+      field = { ...field, value: cleanValue };
+    }
+
     if (existingIdx === -1) {
       // New field — just add
       draft.fields.push(field);
-      this.applyFieldToData(draft, field);
+      this.applyFieldToData(draft, originalField); // use original with _merge for merge logic
       draft.updated_at = new Date().toISOString();
       writeJson(this.filePath(id), draft);
       return { updated: true, conflict: false };
@@ -163,7 +170,7 @@ export class IntakeDraftStore {
     // Owner override always wins
     if (field.source_type === "manual_text") {
       draft.fields[existingIdx] = field;
-      this.applyFieldToData(draft, field);
+      this.applyFieldToData(draft, originalField);
       draft.updated_at = new Date().toISOString();
       writeJson(this.filePath(id), draft);
       return { updated: true, conflict: false };
@@ -177,7 +184,7 @@ export class IntakeDraftStore {
     // Scheme-authoritative: ИС overrides base/inherited for this field
     if (opts?.schemeAuthoritative) {
       draft.fields[existingIdx] = field;
-      this.applyFieldToData(draft, field);
+      this.applyFieldToData(draft, originalField);
       draft.updated_at = new Date().toISOString();
       writeJson(this.filePath(id), draft);
       return { updated: true, conflict: false };

@@ -2,7 +2,7 @@
 
 Canonical target workbook:
 
-- `C:\Users\kubko\projects\gnb-bot\templates\GNB-master-template-v2.xlsx`
+- `C:\Users\kubko\projects\gnb-bot\templates\GNB-master-template-v3.xlsx`
 
 Canonical source sheet:
 
@@ -17,7 +17,8 @@ Canonical source sheet:
 | `title_line` | `B3` | `A4` | long construction title |
 | `object_name` | `B4` | optional/derived | visual object field for acts |
 | `address` | `B5` | `B5`, page text refs | shared |
-| `project_number` | `B7` | `A45` helper line | |
+| `project_number` | `B7` | helper input | raw project number |
+| `project_doc_line` | helper only | `A45` | full AOSR project-document string |
 | `executor` | `B10` | optional | acts-only today |
 
 ## Dates
@@ -65,6 +66,11 @@ Canonical source sheet:
 | `tech_desc` | `B23` | - | |
 | `tech_line` | `C23` | - | |
 | `tech_full_aosr` | - | `A22` | |
+| `tech_name` | helper only | `A70`, `A69` | short name |
+| `sign1_name` | helper only | `A73`, `A72` | short name |
+| `sign2_name` | helper only | `A76`, `A75`, `A80`, `A79` | short name |
+| `designer_name` | helper only | `A83`, `A82` | currently optional/blank |
+| `sign3_name` | helper only | `A86`, `A85` | short name |
 
 ## Pipe / Materials
 
@@ -85,3 +91,13 @@ Canonical source sheet:
 | `total_pipe_length` | `E31` | `B4` | formula/derived |
 | `drill_diameter` | `F31` | - | |
 | `configuration` | `G31` | - | verify whether needed in final workbook |
+
+## Helper Captions
+
+| Field | Acts target | AOSR target | Notes |
+|---|---|---|---|
+| `aosr_page1_caption` | - | `C18` | page 1 heading |
+| `aosr_page2_caption` | - | `C18` | page 2 heading |
+| `aosr_object_caption` | - | `A39` | object/address sentence |
+| `aosr_work_description` | - | `A43` | long works description |
+| `drawing_caption` | - | `G52` / downstream | drawing caption |

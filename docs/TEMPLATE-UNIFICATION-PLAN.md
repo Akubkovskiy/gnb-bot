@@ -11,7 +11,7 @@ Move from two loosely related Excel templates to one master workbook with:
 
 Current master draft file:
 
-- `C:\Users\kubko\projects\gnb-bot\templates\GNB-master-template.xlsx`
+- `C:\Users\kubko\projects\gnb-bot\templates\GNB-master-template-v3.xlsx`
 
 Reference source files:
 
@@ -76,14 +76,24 @@ This should apply to both:
 
 ## Current Problems In The Master Workbook
 
-The current merged file is only a container for redesign.
+The first merged file was only a container for redesign.
 
-It is **not yet a true unified template** because:
+The current `v3` draft is already much closer to the target:
 
-- acts pages already point to the acts data sheet
-- AOSR pages still preserve legacy external workbook links or legacy page-to-page assumptions
+- `00 DATA` is now a real key/value layer
+- `02 Acts - Data` reads from `00 DATA`
+- `13 AOSR - Data` reads from `00 DATA`
+- AOSR pages no longer depend on workbook-external links
 
-That means the master workbook is good for analysis, but not ready for runtime use.
+Remaining work is now mostly cleanup and final consistency, not raw merging.
+
+The template is **not yet final** because:
+
+- helper/derived fields still need cleanup and standardization
+- some page-to-page duplication remains where layout historically depended on it
+- final print validation still needs a human pass
+
+That means the master workbook is now good for structured redesign work, but not yet ready for runtime adoption.
 
 ## Field Groups For The Future DATA Sheet
 

@@ -46,7 +46,7 @@ export function classifyByFilename(filename: string): ClassifyResult {
       return { doc_class: "appointment_letter", confidence: "high", hints: ["filename: назначен"] };
     }
     if (lower.includes("схема") || lower.includes("профиль") || lower.includes("чертёж") || lower.includes("чертеж")
-      || /\bис\b/.test(lower) || lower.includes("исполнительн")) {
+      || /(?:^|\s)ис(?:\s|$)/.test(lower) || lower.includes("исполнительн")) {
       return { doc_class: "executive_scheme", confidence: "high", hints: ["filename: ис/схема/профиль/чертёж"] };
     }
     if (lower.includes("аоср")) {

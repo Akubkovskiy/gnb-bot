@@ -4,7 +4,7 @@ Goal: produce one final master workbook so DB/domain data lands in a single `00 
 
 Working file:
 
-- `C:\Users\kubko\projects\gnb-bot\templates\GNB-master-template-v2.xlsx`
+- `C:\Users\kubko\projects\gnb-bot\templates\GNB-master-template-v3.xlsx`
 
 Reference files:
 
@@ -33,8 +33,8 @@ Exit criteria:
 - [x] Add `00 DATA` sheet
 - [x] Define canonical field groups
 - [x] Document field map: key -> acts target -> AOSR target
-- [ ] Expand field map with helper/derived fields where needed
-- [ ] Mark raw fields vs formatted fields explicitly everywhere
+- [x] Expand field map with helper/derived fields where needed
+- [x] Mark raw fields vs formatted fields explicitly everywhere
 
 Exit criteria:
 
@@ -42,12 +42,12 @@ Exit criteria:
 
 ## Phase T2 — Acts Compatibility Layer
 
-- [ ] Rewire `02 Acts - Data` to read from `00 DATA`
-- [ ] Preserve downstream formulas on acts pages
-- [ ] Verify acts pages still render structurally correct
+- [x] Rewire `02 Acts - Data` to read from `00 DATA`
+- [x] Preserve downstream formulas on acts pages
+- [x] Verify acts pages still render structurally correct
 - [ ] Remove stale/unused cells from acts data layer if safe
-- [ ] Identify and repair all `#REF!` in acts pages
-- [ ] Remove external links from acts pages
+- [x] Identify and repair all `#REF!` in acts pages
+- [x] Remove external links from acts pages
 
 Exit criteria:
 
@@ -55,12 +55,12 @@ Exit criteria:
 
 ## Phase T3 — AOSR Compatibility Layer
 
-- [ ] Rewire `13 AOSR - Data` to read from `00 DATA`
-- [ ] Move all compact AOSR raw fields to formulas from `00 DATA`
-- [ ] Convert `14 AOSR - Page 1` to read from `13 AOSR - Data` / `00 DATA`
-- [ ] Convert `15 AOSR - Page 2` to read from `13 AOSR - Data` / `00 DATA`
+- [x] Rewire `13 AOSR - Data` to read from `00 DATA`
+- [x] Move all compact AOSR raw fields to formulas from `00 DATA`
+- [x] Convert `14 AOSR - Page 1` to read from `13 AOSR - Data` / `00 DATA`
+- [x] Convert `15 AOSR - Page 2` to read from `13 AOSR - Data` / `00 DATA`
 - [ ] Eliminate page-to-page duplication unless layout requires it
-- [ ] Eliminate all workbook-external links from AOSR pages
+- [x] Eliminate all workbook-external links from AOSR pages
 
 Exit criteria:
 
@@ -81,12 +81,12 @@ Exit criteria:
 
 ## Phase T5 — Quality Gate
 
-- [ ] Workbook opens cleanly
-- [ ] No external workbook links remain
-- [ ] No `#REF!` remain
+- [x] Workbook opens cleanly
+- [x] No external workbook links remain
+- [x] No `#REF!` remain
 - [ ] No hidden dependence on old split-template architecture
 - [ ] Print sheets still look structurally correct
-- [ ] `00 DATA` can be inspected by a human and understood
+- [x] `00 DATA` can be inspected by a human and understood
 
 Exit criteria:
 

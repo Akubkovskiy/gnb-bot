@@ -587,6 +587,27 @@ function handleGnbNumberInput(chatId: number, input: string, stores: IntakeStore
     }
   }
 
+  // Normalize object name via JSON store or DB
+  if (object && customer) {
+    const jsonCust = stores.customers.findByNameOrAlias(customer);
+    if (jsonCust) {
+      const objects = stores.customers.getObjects(jsonCust.slug);
+      const match = objects.find((o) => o.name.toLowerCase() === object!.toLowerCase());
+      if (match) object = match.name;
+    }
+    if (object === session.object) {
+      // JSON didn't normalize — try SQLite
+      try {
+        const db = getDb(getMemoryDir());
+        const dbCustomer = dbFindCustomer(db, customer);
+        if (dbCustomer) {
+          const dbObj = dbFindObject(db, dbCustomer.id, object);
+          if (dbObj) object = dbObj.short_name;
+        }
+      } catch { /* DB not available */ }
+    }
+  }
+
   // Parse GNB number
   const parsed = parseGnbNumber(input);
 
