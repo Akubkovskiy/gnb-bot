@@ -105,5 +105,20 @@ export function finalizeIntake(
     // Non-critical
   }
 
+  // Auto-upsert customer + object in SQLite for future /new_gnb list
+  try {
+    const { getDb } = require("../db/client.js");
+    const { createRepos } = require("../db/repositories.js");
+    const { getMemoryDir } = require("../utils/paths.js");
+    const db = getDb(getMemoryDir());
+    const repos = createRepos(db);
+    const custId = (d.customer || "").toLowerCase().replace(/[^a-zа-яё0-9]/gi, "-").replace(/-+/g, "-");
+    repos.customers.upsert({ id: custId, name: d.customer || custId }, [d.customer!.toLowerCase()]);
+    const objId = `${custId}-${(d.object || "").toLowerCase().replace(/[^a-zа-яё0-9]/gi, "-").replace(/-+/g, "-")}`;
+    repos.objects.upsert({ id: objId, customer_id: custId, name: d.object || "", official_name: d.object_name || d.object || "" });
+  } catch {
+    // Non-critical — SQLite may not be available
+  }
+
   return { success: true, transition, errors: [], warnings };
 }
