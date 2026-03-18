@@ -26,6 +26,7 @@ import { buildDocumentReview, formatDocumentReview } from "./document-review.js"
 import { getReusableBaseDocuments, buildDocumentRegistry, deriveRegistryDocument } from "./document-registry.js";
 import { buildNameProposal, applyApprovedName, validateNameProposal } from "./naming.js";
 import { evaluateDocumentCoverage, allRequiredPresent, getMissingRequired } from "./document-requirements.js";
+import { buildDebugSnapshot, formatDebugReview } from "./debug-view.js";
 
 // === Session state (in-memory, per chat) ===
 
@@ -344,6 +345,27 @@ export function handleReview(chatId: number, stores: IntakeStores): IntakeRespon
       [{ text: "Вернуться к сбору", callback_data: "intake:back_collecting" }],
     ],
   };
+}
+
+/**
+ * Handle /review_gnb_debug command.
+ * Returns debug field mapping view + saves debug JSON snapshot.
+ */
+export function handleDebugReview(chatId: number, stores: IntakeStores): { message: string; snapshot: ReturnType<typeof buildDebugSnapshot> } | { message: string; snapshot: null } {
+  const session = getSession(chatId);
+  const draftId = session.draftId;
+  if (!draftId) {
+    return { message: "Нет активного черновика. Начните с /new_gnb.", snapshot: null };
+  }
+
+  const draft = stores.intakeDrafts.get(draftId);
+  if (!draft) {
+    return { message: "Черновик не найден.", snapshot: null };
+  }
+
+  const snapshot = buildDebugSnapshot(draft);
+  const text = formatDebugReview(snapshot);
+  return { message: text, snapshot };
 }
 
 /**

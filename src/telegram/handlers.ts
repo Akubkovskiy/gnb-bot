@@ -20,6 +20,7 @@ import {
   handleIntakeText,
   handleIntakeDocument,
   handleReview,
+  handleDebugReview,
   cancelIntake,
   hasActiveIntake,
   handleCallback,
@@ -30,7 +31,10 @@ import { InlineKeyboard } from "grammy";
 import { processTextWithReasoning, shouldUseReasoning } from "../intake/reasoning-handler.js";
 import { processKnowledgeIngest, persistIngestResult } from "../db/knowledge-ingest.js";
 import { getDb } from "../db/client.js";
+import { createRepos } from "../db/repositories.js";
+import { getObjectProfile } from "../db/retrieval.js";
 import { extractDocument, mapExtractionToFields } from "../intake/doc-extractor.js";
+import type { KnowledgeIngestOutput, IngestDocKind } from "../db/reasoning-contracts.js";
 import {
   getIngestSession,
   setIngestSession,
@@ -43,6 +47,15 @@ import {
   buildFailedResponse,
   type IngestResponse,
 } from "../intake/ingest-session.js";
+import {
+  buildStoragePlan as buildTransitionStoragePlan,
+  placeDocument,
+  ensureStorageDirs,
+  buildPlacementReport,
+  type TransitionStoragePlan,
+  type PlacementRecord,
+} from "../storage/placement.js";
+import { buildStorageFileName, extractExtension } from "../storage/document-naming.js";
 
 const CLAUDE_SYSTEM = fs.readFileSync(
   path.join(process.cwd(), "CLAUDE.md"),
@@ -94,18 +107,23 @@ function initIntakeStores(): IntakeStores {
 
 /**
  * Render XLSX files from a finalized transition and send via Telegram.
+ * Also ensures the full transition storage structure exists.
  */
 async function renderAndSend(
   ctx: Context,
   transition: Transition,
 ): Promise<void> {
-  const outputDir = path.join(
-    getProjectDir(transition.customer, transition.object),
-    `ЗП ${transition.gnb_number_short}`,
-    "Исполнительная документация",
+  // Build storage plan and ensure all dirs exist
+  const storagePlan = buildTransitionStoragePlan(
+    transition.customer,
+    transition.object,
+    transition.gnb_number_short,
   );
+  ensureStorageDirs(storagePlan);
 
-  const status = await ctx.reply("📝 Генерирую акты...");
+  const outputDir = storagePlan.execDocsDir;
+
+  const status = await ctx.reply("\uD83D\uDCDD Генерирую акты...");
   const files: string[] = [];
   const errors: string[] = [];
 
@@ -135,7 +153,7 @@ async function renderAndSend(
     await ctx.api.editMessageText(
       ctx.chat!.id,
       status.message_id,
-      `📄 Сгенерировано файлов: ${files.length}`,
+      `\uD83D\uDCC4 Сгенерировано файлов: ${files.length}`,
     );
     for (const filePath of files) {
       try {
@@ -151,11 +169,19 @@ async function renderAndSend(
 
   if (errors.length > 0) {
     const errMsg = files.length === 0
-      ? `❌ Не удалось сгенерировать файлы:\n${errors.map((e) => `  • ${e}`).join("\n")}\n\nПереход сохранён (ID: ${transition.id}). Можно перегенерировать позже.`
-      : `⚠️ Часть файлов не создана:\n${errors.map((e) => `  • ${e}`).join("\n")}`;
+      ? `\u274C Не удалось сгенерировать файлы:\n${errors.map((e) => `  \u2022 ${e}`).join("\n")}\n\nПереход сохранён (ID: ${transition.id}). Можно перегенерировать позже.`
+      : `\u26A0\uFE0F Часть файлов не создана:\n${errors.map((e) => `  \u2022 ${e}`).join("\n")}`;
     await ctx.reply(errMsg);
   } else if (files.length > 0) {
-    await ctx.reply(`✅ Готово: ${files.map((f) => path.basename(f)).join(", ")}`);
+    // Report storage placement
+    const placementLines: string[] = [];
+    for (const f of files) {
+      placementLines.push(`  ${path.basename(f)} \u2192 Исполнительная документация/`);
+    }
+    await ctx.reply(
+      `\u2705 Готово: ${files.map((f) => path.basename(f)).join(", ")}\n\n` +
+      `\uD83D\uDCC1 Документы размещены:\n${placementLines.join("\n")}`,
+    );
   }
 }
 
@@ -250,9 +276,18 @@ async function runStandaloneIngest(
     if (ingestResult && ingestResult.missingLinks.length === 0 && ingestResult.questionsForOwner.length === 0) {
       // All links resolved — persist immediately
       const { documentId } = persistIngestResult(db, ingestResult, localPath);
+
+      // Place document into storage if object/transition context is known
+      const placementMsg = placeIngestedDocument(
+        db, ingestResult, localPath, fileName, documentId,
+      );
+
       fs.unlinkSync(localPath);
       const resp = buildPersistedResponse(ingestResult.summary, documentId, ingestResult.suggestedLinks);
-      await ctx.api.editMessageText(chatId, statusMsgId, resp.message);
+      const fullMsg = placementMsg
+        ? `${resp.message}\n\n${placementMsg}`
+        : resp.message;
+      await ctx.api.editMessageText(chatId, statusMsgId, fullMsg);
       clearIngestSession(chatId);
       return;
     }
@@ -287,6 +322,96 @@ async function runStandaloneIngest(
       chatId, statusMsgId,
       `❌ Ошибка обработки ${fileName}: ${err instanceof Error ? err.message : "неизвестная ошибка"}`,
     );
+  }
+}
+
+/**
+ * Place an ingested document into storage if object/transition context is known.
+ * Returns a human-readable placement message, or empty string if no placement.
+ */
+function placeIngestedDocument(
+  db: ReturnType<typeof getDb>,
+  ingestResult: KnowledgeIngestOutput,
+  filePath: string,
+  fileName: string,
+  documentId: string,
+): string {
+  try {
+    const links = ingestResult.suggestedLinks;
+    if (!links.objectId) return "";
+
+    const objectProfile = getObjectProfile(db, links.objectId);
+    if (!objectProfile) return "";
+
+    const customerName = objectProfile.customer?.name;
+    const objectName = objectProfile.object.short_name;
+    if (!customerName || !objectName) return "";
+
+    // Determine doc type for routing
+    const docType = mapIngestKindToDocType(ingestResult.docKind, ingestResult.extractedData);
+
+    // If transition is known, place into transition folder
+    let gnbShort = "";
+    if (links.transitionId) {
+      const repos = createRepos(db);
+      const transition = repos.transitions.getById(links.transitionId);
+      if (transition?.gnb_number_short) {
+        gnbShort = transition.gnb_number_short;
+      }
+    }
+
+    if (gnbShort) {
+      const plan = buildTransitionStoragePlan(customerName, objectName, gnbShort);
+      ensureStorageDirs(plan);
+
+      // Build canonical filename
+      const ext = extractExtension(fileName);
+      const canonicalName = buildStorageFileName(docType, {
+        docNumber: ingestResult.extractedData.docNumber as string,
+        docDate: ingestResult.extractedData.docDate as string,
+        mark: ingestResult.extractedData.mark as string,
+        gnbNumberShort: gnbShort,
+        originalExt: ext,
+      });
+
+      const record = placeDocument(plan, docType, filePath, canonicalName);
+      if (record.success) {
+        // Update DB with final storage path
+        const repos = createRepos(db);
+        repos.documents.updateFilePath(documentId, record.targetFile);
+
+        const dirName = path.basename(record.targetDir);
+        return `\uD83D\uDCC1 ${path.basename(record.targetFile)} \u2192 ${dirName}/`;
+      }
+    } else {
+      // Object known but no transition — place into object-level Прочее
+      const projectDir = getProjectDir(customerName, objectName);
+      const miscDir = path.join(projectDir, "\u041F\u0440\u043E\u0447\u0435\u0435");
+      fs.mkdirSync(miscDir, { recursive: true });
+
+      const targetPath = path.join(miscDir, fileName);
+      fs.copyFileSync(filePath, targetPath);
+
+      const repos = createRepos(db);
+      repos.documents.updateFilePath(documentId, targetPath);
+
+      return `\uD83D\uDCC1 ${fileName} \u2192 ${objectName}/\u041F\u0440\u043E\u0447\u0435\u0435/`;
+    }
+  } catch (err) {
+    logger.error({ err, fileName }, "Failed to place ingested document");
+  }
+  return "";
+}
+
+function mapIngestKindToDocType(kind: IngestDocKind, data: Record<string, unknown>): string {
+  switch (kind) {
+    case "person_document": return (data.docType as string) ?? "order";
+    case "pipe_document": return "passport_pipe";
+    case "material_document": return "certificate";
+    case "scheme": return "executive_scheme";
+    case "reference_act": return "prior_aosr";
+    case "organization_document": return "order";
+    default: return "unknown";
   }
 }
 
@@ -352,6 +477,31 @@ export function registerHandlers(bot: Bot): void {
     }
   });
 
+  bot.command("review_gnb_debug", async (ctx) => {
+    try {
+      const result = handleDebugReview(ctx.chat.id, stores);
+      // Send debug text (may be long — split)
+      const parts = splitMessage(result.message);
+      for (const part of parts) {
+        await ctx.reply(part);
+      }
+      // Save and send debug JSON snapshot as file
+      if (result.snapshot) {
+        const snapshotJson = JSON.stringify(result.snapshot, null, 2);
+        const snapshotPath = path.join(getTempDir(), `debug-${result.snapshot.draft_id}.json`);
+        fs.mkdirSync(path.dirname(snapshotPath), { recursive: true });
+        fs.writeFileSync(snapshotPath, snapshotJson, "utf-8");
+        await ctx.replyWithDocument(new InputFile(snapshotPath), {
+          caption: `Debug snapshot: ${result.snapshot.draft_id}`,
+        });
+        try { fs.unlinkSync(snapshotPath); } catch { /* ignore */ }
+      }
+    } catch (err) {
+      logger.error({ err }, "Ошибка /review_gnb_debug");
+      await ctx.reply("Ошибка при формировании debug сводки.");
+    }
+  });
+
   bot.command("cancel", async (ctx) => {
     const result = cancelIntake(ctx.chat.id, stores);
     await ctx.reply(result.message);
@@ -389,13 +539,19 @@ export function registerHandlers(bot: Bot): void {
           const db = getDb(memDir);
           const { documentId } = persistIngestResult(db, result, session.filePath);
 
+          // Place document into storage if context is known
+          let placementMsg = "";
           if (session.filePath) {
+            placementMsg = placeIngestedDocument(
+              db, result, session.filePath, session.fileName || "document", documentId,
+            ) || "";
             try { fs.unlinkSync(session.filePath); } catch { /* ignore */ }
           }
           clearIngestSession(chatId);
 
           const resp = buildPersistedResponse(result.summary, documentId, result.suggestedLinks);
-          await ctx.reply(resp.message);
+          const fullMsg = placementMsg ? `${resp.message}\n\n${placementMsg}` : resp.message;
+          await ctx.reply(fullMsg);
           return;
         }
 
@@ -600,12 +756,19 @@ export function registerHandlers(bot: Bot): void {
           const db = getDb(memDir);
           const session = getIngestSession(chatId);
           const { documentId } = persistIngestResult(db, result, session?.filePath);
+
+          // Place document into storage if context is known
+          let placementMsg = "";
           if (session?.filePath) {
+            placementMsg = placeIngestedDocument(
+              db, result, session.filePath, session.fileName || "document", documentId,
+            ) || "";
             try { fs.unlinkSync(session.filePath); } catch { /* ignore */ }
           }
           clearIngestSession(chatId);
           const resp = buildPersistedResponse(result.summary, documentId, result.suggestedLinks);
-          await ctx.reply(resp.message);
+          const fullMsg = placementMsg ? `${resp.message}\n\n${placementMsg}` : resp.message;
+          await ctx.reply(fullMsg);
           return;
         }
       } catch (err) {

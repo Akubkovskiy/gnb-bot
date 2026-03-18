@@ -214,6 +214,13 @@ export class DocumentRepo {
       .where(eq(s.documents.id, id))
       .run();
   }
+
+  updateFilePath(id: string, filePath: string) {
+    return this.db.update(s.documents)
+      .set({ file_path: filePath, updated_at: new Date().toISOString() })
+      .where(eq(s.documents.id, id))
+      .run();
+  }
 }
 
 // === Document Links ===
