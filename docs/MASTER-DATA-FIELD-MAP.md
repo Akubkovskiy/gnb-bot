@@ -96,8 +96,8 @@ Canonical source sheet:
 
 | Field | Acts target | AOSR target | Notes |
 |---|---|---|---|
-| `aosr_page1_caption` | - | `C18` | page 1 heading |
-| `aosr_page2_caption` | - | `C18` | page 2 heading |
-| `aosr_object_caption` | - | `A39` | object/address sentence |
-| `aosr_work_description` | - | `A43` | long works description |
-| `drawing_caption` | - | `G52` / downstream | drawing caption |
+| `aosr_page1_caption` | - | `C18` | runtime-owned helper, keep blank in template |
+| `aosr_page2_caption` | - | `C18` | runtime-owned helper, keep blank in template |
+| `aosr_object_caption` | - | `A39` | runtime-owned helper, keep blank in template |
+| `aosr_work_description` | - | `A43` | runtime-owned helper, keep blank in template |
+| `drawing_caption` | - | `G52` / downstream | runtime-owned helper, keep blank in template |

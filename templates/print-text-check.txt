@@ -1,10 +1,4 @@
-﻿14 AOSR - Page 1!A4=ГНБ 10-1С г. Москва, ул. Кантемировская, д.60
-14 AOSR - Page 1!A45=ИМ-19-4-Р-3.2Э-ЗП2
-14 AOSR - Page 1!A70=
-15 AOSR - Page 2!A49=
-15 AOSR - Page 2!A59=
-03 Acts - Breakdown!B3=Объект:
-03 Acts - Breakdown!B4=Дата:
-03 Acts - Breakdown!B14=
-03 Acts - Breakdown!B20=
-03 Acts - Breakdown!C20=
+﻿14 AOSR - Page 1!C18=
+15 AOSR - Page 2!C18=
+14 AOSR - Page 1!A39=
+15 AOSR - Page 2!A59=Прокладке кабельных линий

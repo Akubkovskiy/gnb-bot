@@ -107,11 +107,12 @@ export function startIntake(chatId: number, stores: IntakeStores): IntakeRespons
   } catch { /* no JSON store */ }
   try {
     const db = getDb(getMemoryDir());
-    const { createRepos } = require("../db/repositories.js");
-    const repos = createRepos(db);
-    const dbCustomers = repos.customers.getAll();
-    for (const c of dbCustomers) {
-      if (!customerNames.some((n) => n.toLowerCase() === c.name.toLowerCase())) {
+    // Use findCustomer with empty query to get all — or query directly
+    // getDb returns drizzle instance; import schema lazily
+    const s = require("../db/schema.js");
+    const rows = db.select({ name: s.customers.name }).from(s.customers).all();
+    for (const c of rows) {
+      if (c.name && !customerNames.some((n) => n.toLowerCase() === c.name.toLowerCase())) {
         customerNames.push(c.name);
       }
     }
@@ -539,10 +540,10 @@ function handleCustomerInput(chatId: number, input: string, stores: IntakeStores
     } catch { /* */ }
     try {
       const db = getDb(getMemoryDir());
-      const { createRepos } = require("../db/repositories.js");
-      const repos = createRepos(db);
-      for (const c of repos.customers.getAll()) {
-        if (!customerNames.some((n) => n.toLowerCase() === c.name.toLowerCase())) {
+      const s = require("../db/schema.js");
+      const rows = db.select({ name: s.customers.name }).from(s.customers).all();
+      for (const c of rows) {
+        if (c.name && !customerNames.some((n) => n.toLowerCase() === c.name.toLowerCase())) {
           customerNames.push(c.name);
         }
       }
@@ -571,8 +572,8 @@ function handleCustomerInput(chatId: number, input: string, stores: IntakeStores
     const db = getDb(getMemoryDir());
     const dbCustomer = dbFindCustomer(db, input);
     if (dbCustomer) {
-      const { createRepos } = require("../db/repositories.js");
-      const repos = createRepos(db);
+      const { createRepos: cr } = require("../db/repositories.js");
+      const repos = cr(db);
       const dbObjects = repos.objects.getByCustomerId(dbCustomer.id);
       setSession(chatId, { ...getSession(chatId), state: "awaiting_object", customer: dbCustomer.name });
 
