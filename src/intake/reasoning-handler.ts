@@ -93,6 +93,42 @@ export async function processTextWithReasoning(
   let usedReasoning = false;
   let reasoningSummary: string | undefined;
 
+  // DB-enrich signatory fields from regex: if just a surname, look up full profile
+  try {
+    const db = getDb(memoryDir);
+    const { createRepos: cr } = await import("../db/repositories.js");
+    const repos = cr(db);
+    for (let i = 0; i < fieldsToApply.length; i++) {
+      const f = fieldsToApply[i];
+      if (!f.field_name.startsWith("signatories.")) continue;
+      const val = f.value as Record<string, unknown> | null;
+      if (!val?.full_name) continue;
+      const name = String(val.full_name);
+      // Only enrich if it looks like a bare surname (no initials)
+      if (name.includes(".") || name.split(/\s+/).length > 1) continue;
+      const candidates = repos.people.findBySurname(name);
+      if (candidates.length > 0) {
+        const person = candidates[0];
+        const org = person.org_id ? repos.orgs.getById(person.org_id) : undefined;
+        const docs = repos.personDocs.getCurrentByPersonId(person.id);
+        fieldsToApply[i] = {
+          ...f,
+          value: {
+            person_id: person.id,
+            role: (val.role as string) || "",
+            org_description: org?.short_name ?? "",
+            position: person.position ?? "",
+            full_name: person.full_name,
+            aosr_full_line: person.aosr_full_line ?? "",
+            ...(person.nrs_id ? { nrs_id: person.nrs_id, nrs_date: person.nrs_date } : {}),
+            ...(docs[0] ? { order_type: docs[0].doc_type, order_number: docs[0].doc_number, order_date: docs[0].doc_date } : {}),
+          },
+          confidence: "high",
+        };
+      }
+    }
+  } catch { /* DB not available */ }
+
   if (shouldUseReasoning(input, regexResult.fields.length) && objectId) {
     try {
       const db = getDb(memoryDir);
