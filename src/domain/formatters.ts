@@ -97,20 +97,46 @@ export function parseDate(input: string): DateComponents {
 // === Signatory formatting ===
 
 /**
- * B-column: org/role description.
- * ЗП 5-5 style: "Представитель АО «ОЭК»"
+ * B-column: full description for signatory.
+ * Per CLAUDE.md: "B-колонка = описание (орг + должн. + ФИО)"
+ * Example: "Мастер по ЭРС СВРЭС АО «ОЭК» Коробков Ю.Н."
+ *
+ * Note: B-column is a SHORT label, NOT the full АОСР line.
+ * aosr_full_line contains НРС/приказ details and is used in АОСР cells.
+ *
+ * Strategy:
+ * 1. If org_description contains "Представитель" → it's already a role label, use as-is
+ * 2. Otherwise build from: position + org + name
  */
 export function formatSignatoryDesc(s: Signatory): string {
-  return s.org_description;
+  // If org_description is already a full role label ("Представитель..."), use as-is
+  if (s.org_description && /^Представител|^Технический/.test(s.org_description)) {
+    return s.org_description;
+  }
+
+  // Build from parts: position + org + name
+  const pos = s.position && s.position !== "—" ? s.position : "";
+  const org = s.org_description || "";
+  const name = s.full_name || "";
+
+  if (pos && org && name) {
+    return `${pos} ${org} ${name}`.trim();
+  }
+  if (org && name) {
+    return `${org} ${name}`.trim();
+  }
+  return s.org_description || s.full_name || "";
 }
 
 /**
- * C-column: position + name (no underscores).
+ * C-column: position + name for signature line.
  * ЗП 5-5 style: "Мастер по ЭРС СВРЭС  Коробков Ю.Н."
  * Double space between position and name (matches golden reference).
  */
 export function formatSignatorySign(s: Signatory): string {
-  return `${s.position}  ${s.full_name}`;
+  const pos = s.position && s.position !== "—" ? s.position : "";
+  if (pos) return `${pos}  ${s.full_name}`;
+  return s.full_name || "";
 }
 
 // === Organization formatting (for АОСР) ===

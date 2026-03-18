@@ -51,11 +51,11 @@ export async function renderInternalActs(
   // Derive act_date (default to end_date)
   const actDate = transition.act_date ?? transition.end_date;
 
-  // Customer display: "СВРЭС АО «ОЭК»" (department + short_name)
+  // Customer display: "СВРЭС АО «ОЭК»" (department + short_name) or name fallback
   const cust = transition.organizations.customer;
   const customerDisplay = cust.department && cust.short_name
     ? `${cust.department} ${cust.short_name}`
-    : cust.short_name ?? cust.name;
+    : cust.short_name || cust.name || "АО «ОЭК»";
 
   // === Write all cells ===
 
