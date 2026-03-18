@@ -184,7 +184,7 @@ export function findReusablePipeDocs(db: Db, objectId: string): ReusableDoc[] {
     }
   }
 
-  // Also check document_links for pipe-related docs
+  // Also check document_links for pipe-related docs (material links)
   const pipeLinks = db.select().from(s.documentLinks)
     .where(eq(s.documentLinks.link_type, "material"))
     .all();
@@ -195,6 +195,18 @@ export function findReusablePipeDocs(db: Db, objectId: string): ReusableDoc[] {
     const doc = db.select().from(s.documents).where(eq(s.documents.id, link.document_id)).get();
     if (doc && doc.status !== "rejected" && !results.some((r) => r.document.id === doc.id)) {
       results.push({ document: doc, materialName: mat.name, relation: link.relation });
+    }
+  }
+
+  // Also check pipe_passport docs linked directly to this object (from standalone ingest)
+  const objectLinks = db.select().from(s.documentLinks)
+    .where(and(eq(s.documentLinks.link_type, "object"), eq(s.documentLinks.target_id, objectId)))
+    .all();
+
+  for (const link of objectLinks) {
+    const doc = db.select().from(s.documents).where(eq(s.documents.id, link.document_id)).get();
+    if (doc && doc.doc_type === "pipe_passport" && doc.status !== "rejected" && !results.some((r) => r.document.id === doc.id)) {
+      results.push({ document: doc, materialName: doc.extracted_summary ?? undefined, relation: "ingest" });
     }
   }
 
@@ -266,6 +278,44 @@ export function getBaseKnowledgeForDraft(
     reusableMaterialDocs,
     lastTransition,
   };
+}
+
+/**
+ * Find all documents linked to an object (via any link path).
+ */
+export function findDocumentsByObjectId(db: Db, objectId: string): Array<typeof s.documents.$inferSelect> {
+  // Direct object links
+  const directLinks = db.select().from(s.documentLinks)
+    .where(and(eq(s.documentLinks.link_type, "object"), eq(s.documentLinks.target_id, objectId)))
+    .all();
+
+  const docIds = new Set(directLinks.map((l) => l.document_id));
+
+  // Also find docs linked to transitions of this object
+  const transIds = db.select({ id: s.transitions.id }).from(s.transitions)
+    .where(eq(s.transitions.object_id, objectId))
+    .all()
+    .map((t) => t.id);
+
+  for (const tid of transIds) {
+    const tLinks = db.select().from(s.documentLinks)
+      .where(and(eq(s.documentLinks.link_type, "transition"), eq(s.documentLinks.target_id, tid)))
+      .all();
+    for (const l of tLinks) docIds.add(l.document_id);
+  }
+
+  return [...docIds].map((id) =>
+    db.select().from(s.documents).where(eq(s.documents.id, id)).get(),
+  ).filter(Boolean) as Array<typeof s.documents.$inferSelect>;
+}
+
+/**
+ * Find documents by doc_type.
+ */
+export function findDocumentsByType(db: Db, docType: string): Array<typeof s.documents.$inferSelect> {
+  return db.select().from(s.documents)
+    .where(eq(s.documents.doc_type, docType))
+    .all();
 }
 
 // === Alias-friendly lookups ===
