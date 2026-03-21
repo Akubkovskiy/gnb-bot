@@ -76,7 +76,6 @@ export async function askClaude(prompt: string, options: AskClaudeOptions = {}):
   const args = [
     "-p", prompt,
     "--output-format", "json",
-    "--bare",
     "--no-session-persistence",
   ];
 
