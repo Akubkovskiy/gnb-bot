@@ -595,14 +595,32 @@ function handleObjectInput(chatId: number, input: string, stores: IntakeStores):
   const session = getSession(chatId);
   const customer = session.customer!;
 
-  // Try to resolve by number — need slug for getObjects
+  // Collect objects from JSON store + SQLite
   const found = stores.customers.findByNameOrAlias(customer);
-  const objects = found ? stores.customers.getObjects(found.slug) : [];
+  const jsonObjects = found ? stores.customers.getObjects(found.slug) : [];
+  const objectNames: string[] = jsonObjects.map((o) => o.name);
+
+  // Also check SQLite for objects
+  try {
+    const db = getDb(getMemoryDir());
+    const dbCustomer = dbFindCustomer(db, customer);
+    if (dbCustomer) {
+      const repos = createRepos(db);
+      const dbObjects = repos.objects.getByCustomerId(dbCustomer.id);
+      for (const o of dbObjects) {
+        const name = (o as any).short_name || (o as any).official_name || "";
+        if (name && !objectNames.some((n) => n.toLowerCase() === name.toLowerCase())) {
+          objectNames.push(name);
+        }
+      }
+    }
+  } catch { /* DB not available */ }
+
   const idx = parseInt(input, 10);
   let objectName: string;
 
-  if (!isNaN(idx) && idx >= 1 && idx <= objects.length) {
-    objectName = objects[idx - 1].name;
+  if (!isNaN(idx) && idx >= 1 && idx <= objectNames.length) {
+    objectName = objectNames[idx - 1];
   } else {
     objectName = input;
   }

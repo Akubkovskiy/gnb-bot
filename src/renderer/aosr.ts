@@ -88,19 +88,21 @@ export async function renderAosr(
   write(sheet1, AOSR_SHEET1_CELLS.act_year, actDate.year);
 
   // === АОСР(1) — hardcoded cells ===
-  const { customer, contractor, designer } = transition.organizations;
+  const customer = transition.organizations?.customer;
+  const contractor = transition.organizations?.contractor;
+  const designer = transition.organizations?.designer;
   const { sign1_customer, sign2_contractor, sign3_optional, tech_supervisor } = transition.signatories;
 
   write(aosr1, AOSR1_CELLS.object_title, transition.title_line);
-  write(aosr1, AOSR1_CELLS.org_customer, formatOrgAosr(customer, "customer"));
-  write(aosr1, AOSR1_CELLS.org_contractor, formatOrgAosr(contractor, "contractor"));
-  write(aosr1, AOSR1_CELLS.org_designer, formatOrgAosr(designer, "designer"));
+  if (customer) write(aosr1, AOSR1_CELLS.org_customer, formatOrgAosr(customer, "customer"));
+  if (contractor) write(aosr1, AOSR1_CELLS.org_contractor, formatOrgAosr(contractor, "contractor"));
+  if (designer) write(aosr1, AOSR1_CELLS.org_designer, formatOrgAosr(designer, "designer"));
 
   // Signatories — full АОСР lines
-  write(aosr1, AOSR1_CELLS.tech_full, tech_supervisor.aosr_full_line);
-  write(aosr1, AOSR1_CELLS.sign1_full, sign1_customer.aosr_full_line);
-  write(aosr1, AOSR1_CELLS.sign2_full, sign2_contractor.aosr_full_line);
-  write(aosr1, AOSR1_CELLS.sign2_control, sign2_contractor.aosr_full_line); // строительный контроль = same person
+  if (tech_supervisor) write(aosr1, AOSR1_CELLS.tech_full, tech_supervisor.aosr_full_line);
+  if (sign1_customer) write(aosr1, AOSR1_CELLS.sign1_full, sign1_customer.aosr_full_line);
+  if (sign2_contractor) write(aosr1, AOSR1_CELLS.sign2_full, sign2_contractor.aosr_full_line);
+  if (sign2_contractor) write(aosr1, AOSR1_CELLS.sign2_control, sign2_contractor.aosr_full_line); // строительный контроль = same person
 
   if (sign3_optional) {
     write(aosr1, AOSR1_CELLS.sign3_full, sign3_optional.aosr_full_line);

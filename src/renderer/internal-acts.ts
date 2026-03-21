@@ -72,8 +72,8 @@ export async function renderInternalActs(
 
   // Organizations
   writeCell(INTERNAL_ACTS_CELLS.customer_display, customerDisplay);
-  writeCell(INTERNAL_ACTS_CELLS.contractor_display, transition.organizations.contractor.name);
-  writeCell(INTERNAL_ACTS_CELLS.designer_display, transition.organizations.designer.name);
+  writeCell(INTERNAL_ACTS_CELLS.contractor_display, transition.organizations?.contractor?.name ?? "");
+  writeCell(INTERNAL_ACTS_CELLS.designer_display, transition.organizations?.designer?.name ?? "");
 
   // Signatories
   const { sign1_customer, sign2_contractor, sign3_optional, tech_supervisor } = transition.signatories;
