@@ -213,7 +213,7 @@ export class IntakeDraftStore {
       // legal details (ОГРН, ИНН, legal_address) over a shorter abbreviation.
       if (sourcePriority(field.source_type) === sourcePriority(existing.source_type)
         && isOrganizationField(field.field_name)
-        && hasRicherLegalDetails(existing.value, field.value)) {
+        && hasRicherDetails(existing.value, field.value)) {
         // Existing value has more legal detail — don't overwrite, silently skip
         return { updated: false, conflict: false };
       }
@@ -224,8 +224,9 @@ export class IntakeDraftStore {
       return { updated: true, conflict: false };
     }
 
-    // For organization fields: if existing has richer details and name matches, skip silently
-    if (isOrganizationField(field.field_name) && hasRicherLegalDetails(existing.value, field.value)) {
+    // If existing value has significantly richer details than candidate, skip silently
+    // Applies to org fields (ОГРН/ИНН) and pipe fields (passport/cert refs)
+    if (hasRicherDetails(existing.value, field.value)) {
       return { updated: false, conflict: false };
     }
 
@@ -436,24 +437,24 @@ function isOrganizationField(fieldName: FieldName): boolean {
 }
 
 /**
- * Check if value `a` has richer legal details than value `b`.
- * Returns true if `a` contains ОГРН/ИНН/legal address and `b` does not,
- * or if `a` stringifies to significantly longer text (indicating full legal details).
+ * Check if value `a` has richer details than value `b`.
+ * Used to skip false conflicts where existing value is a superset of the candidate.
+ * Works for orgs (ОГРН/ИНН), pipe (паспорт/сертификат), and general longer values.
  */
-function hasRicherLegalDetails(a: unknown, b: unknown): boolean {
+function hasRicherDetails(a: unknown, b: unknown): boolean {
   const aStr = typeof a === "string" ? a : JSON.stringify(a ?? "");
   const bStr = typeof b === "string" ? b : JSON.stringify(b ?? "");
 
-  const legalPattern = /ОГРН|ИНН|ogrn|inn|legal_address/i;
-  const aHasLegal = legalPattern.test(aStr);
-  const bHasLegal = legalPattern.test(bStr);
+  // Rich detail markers (orgs, pipe docs, signatory docs)
+  const richPattern = /ОГРН|ИНН|ogrn|inn|legal_address|паспорт качества|сертификат соответствия|НРС|приказ №|распоряжение №/i;
+  const aHasRich = richPattern.test(aStr);
+  const bHasRich = richPattern.test(bStr);
 
-  // If existing has legal details and new doesn't, existing is richer
-  if (aHasLegal && !bHasLegal) return true;
+  // If existing has rich details and new doesn't, existing is richer
+  if (aHasRich && !bHasRich) return true;
 
-  // If both have or both lack legal patterns, compare by length
-  // (full org details are typically 3x+ longer than abbreviations)
-  if (!aHasLegal && !bHasLegal && aStr.length > bStr.length * 2) return true;
+  // If existing is significantly longer (3x+), it likely contains more detail
+  if (aStr.length > bStr.length * 3 && aStr.length > 50) return true;
 
   return false;
 }
