@@ -415,7 +415,46 @@ Tasks:
 Done when:
 - [ ] the bot can handle natural spoken-like instructions much better than rigid parser input
 
-## Phase 8 - Storage and Cloud Placement
+## Phase 8 - Template and Generation Stabilization
+Estimate: 1-2 days
+
+Goal:
+- create and stabilize the real generation templates before storage/cloud rollout
+
+Tasks:
+- [ ] create or clean up the primary acts template for the current customer flow
+- [ ] make the acts template human-readable in Russian and understandable to a PTO engineer
+- [ ] remove one-off / accidental fields that should not exist as stable template fields
+- [ ] make sure the primary object field is the canonical source across acts pages
+- [ ] define and document exact mapping:
+  - [ ] `resolved_data -> template input cells`
+  - [ ] `template input cells -> printed cells`
+- [ ] verify that the template fills correctly in all core scenarios:
+  - [ ] scenario with 2 signatories
+  - [ ] scenario with 3 signatories
+- [ ] verify that signatory blocks are filled correctly for:
+  - [ ] role/organization description
+  - [ ] signature line
+  - [ ] optional third signatory behavior
+  - [ ] tech supervisor behavior
+- [ ] separately analyze and stabilize AOSR template logic after acts template is clean
+- [ ] ensure generation output is semantically correct, not just "file created successfully"
+- [ ] prepare a second acts-template track for another customer profile:
+  - [ ] New Moscow / Новая Москва
+  - [ ] different acts layout
+  - [ ] different signatory count / structure
+- [ ] document template variants and when each one should be selected
+
+Tasks:
+- [ ] do not start storage/cloud rollout until template/generation validation is complete
+
+Done when:
+- [ ] acts generation is understandable, stable, and correct in real scenarios
+- [ ] template mapping is explicit and testable
+- [ ] 2-signatory and 3-signatory scenarios are both validated
+- [ ] a second customer template path is planned/documented for future rollout
+
+## Phase 9 - Storage and Cloud Placement
 Estimate: 1-2 days
 
 Goal:
@@ -451,6 +490,9 @@ Gate 5:
 - runtime integration / stage rehearsal
 
 Gate 6:
+- template/generation validation verified on real scenarios
+
+Gate 7:
 - storage/cloud placement verified on a real transition
 
 Outside these gates Claude should work autonomously unless blocked.
@@ -501,7 +543,8 @@ Rules:
 5. Phase 5 - Replace regex-heavy text path
 6. Phase 6 - Conflict, review, and reuse UX
 7. Phase 7 - Voice-ready input and UX polish
-8. Phase 8 - Storage and cloud placement
+8. Phase 8 - Template and generation stabilization
+9. Phase 9 - Storage and cloud placement
 
 ## 11. Highest-Value Path
 

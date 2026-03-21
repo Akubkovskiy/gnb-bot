@@ -224,6 +224,11 @@ export class IntakeDraftStore {
       return { updated: true, conflict: false };
     }
 
+    // For organization fields: if existing has richer details and name matches, skip silently
+    if (isOrganizationField(field.field_name) && hasRicherLegalDetails(existing.value, field.value)) {
+      return { updated: false, conflict: false };
+    }
+
     // Lower-priority source — mark as conflict candidate
     field.conflict_with_existing = true;
     draft.fields.push(field);
