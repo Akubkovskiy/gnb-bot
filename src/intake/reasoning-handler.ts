@@ -125,6 +125,37 @@ export async function processTextWithReasoning(
           },
           confidence: "high",
         };
+
+        // Auto-fill organization from person's org
+        if (org) {
+          const orgFieldName = roleToOrgFieldName(
+            f.field_name === "signatories.sign1_customer" ? "sign1_customer"
+              : f.field_name === "signatories.sign2_contractor" ? "sign2_contractor"
+              : f.field_name === "signatories.sign3_optional" ? "sign3_optional"
+              : f.field_name === "signatories.tech_supervisor" ? "tech_supervisor"
+              : "",
+          );
+          if (orgFieldName) {
+            fieldsToApply.push({
+              field_name: orgFieldName,
+              value: {
+                id: org.id,
+                name: org.name,
+                short_name: org.short_name,
+                ogrn: org.ogrn ?? "",
+                inn: org.inn ?? "",
+                legal_address: org.legal_address ?? "",
+                phone: org.phone ?? "",
+                sro_name: org.sro_name ?? "",
+              },
+              source_id: f.source_id,
+              source_type: "manual_text",
+              confidence: "high",
+              confirmed_by_owner: false,
+              conflict_with_existing: false,
+            });
+          }
+        }
       }
     }
   } catch { /* DB not available */ }

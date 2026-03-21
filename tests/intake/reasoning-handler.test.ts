@@ -96,9 +96,13 @@ describe("processTextWithReasoning", () => {
     );
 
     expect(result).not.toBeNull();
-    expect(result!.usedReasoning).toBe(true);
+    // DB enrichment now handles bare surnames — reasoning may or may not be used
     expect(result!.updatedFields.length).toBeGreaterThanOrEqual(1);
-    expect(result!.updatedFields[0].name).toBe("signatories.tech_supervisor");
+    const techField = result!.updatedFields.find((f) => f.name === "signatories.tech_supervisor");
+    expect(techField).toBeDefined();
+    // DB enrichment should produce full_name from DB
+    const techVal = techField!.value as Record<string, unknown>;
+    expect(techVal.full_name).toBe("Гайдуков Н.И.");
     // Also auto-fills organizations.customer from person's org
     const orgField = result!.updatedFields.find((f) => f.name === "organizations.customer");
     expect(orgField).toBeDefined();
