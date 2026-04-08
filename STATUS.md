@@ -14,7 +14,8 @@ Runs on: operator machine and bot runtime surfaces
 
 ## Runtime Shape
 
-- root `CLAUDE.md` is part of the live runtime prompt surface
+- `docs/RUNTIME-PROMPT.md` is the live runtime prompt surface
+- root `CLAUDE.md` is the repo-local project pack
 - `docs/REPO-GUIDANCE.md` is the operator guidance layer
 - `src/intake/`, `src/telegram/`, `src/db/` hold the core logic
 - templates and generated artifacts are part of the real workflow
@@ -26,7 +27,7 @@ Runs on: operator machine and bot runtime surfaces
 - local SQLite / extracted payloads
 - `temp_files/`
 - generated document artifacts
-- root `CLAUDE.md`
+- `docs/RUNTIME-PROMPT.md`
 
 ## High-Risk Zones
 
@@ -39,4 +40,5 @@ Runs on: operator machine and bot runtime surfaces
 ## Current Working Rule
 
 Enter through `STATUS.md`, `INDEX.md`, and `docs/REPO-GUIDANCE.md`.
-Do not repurpose the root `CLAUDE.md` as repo guidance.
+Use root `CLAUDE.md` as the repo guidance entrypoint.
+Do not casually rewrite `docs/RUNTIME-PROMPT.md`; it changes live bot behavior.

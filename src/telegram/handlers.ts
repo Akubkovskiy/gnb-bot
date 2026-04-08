@@ -57,10 +57,23 @@ import {
 } from "../storage/placement.js";
 import { buildStorageFileName, extractExtension } from "../storage/document-naming.js";
 
-const CLAUDE_SYSTEM = fs.readFileSync(
-  path.join(process.cwd(), "CLAUDE.md"),
-  "utf-8",
-);
+function loadClaudeSystemPrompt(): string {
+  const candidates = [
+    path.join(process.cwd(), "docs", "RUNTIME-PROMPT.md"),
+    path.join(process.cwd(), "docs", "BOT_INSTRUCTION.md"),
+    path.join(process.cwd(), "CLAUDE.md"),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return fs.readFileSync(candidate, "utf-8");
+    }
+  }
+
+  throw new Error("Runtime prompt file not found.");
+}
+
+const CLAUDE_SYSTEM = loadClaudeSystemPrompt();
 
 function getSystemPromptWithMemory(): string {
   const memory = buildMemoryContext();

@@ -4,14 +4,16 @@
 
 1. `STATUS.md`
 2. `docs/REPO-GUIDANCE.md`
-3. `ops/deploy.md`
-4. `ops/backup.md`
-5. `ops/restore.md`
+3. root `CLAUDE.md`
+4. `docs/RUNTIME-PROMPT.md`
+5. `ops/deploy.md`
+6. `ops/backup.md`
+7. `ops/restore.md`
 
 ## By Task
 
 ### Runtime prompt / bot behavior
-- root `CLAUDE.md`
+- `docs/RUNTIME-PROMPT.md`
 - `docs/BOT_INSTRUCTION.md`
 - `skills/`
 

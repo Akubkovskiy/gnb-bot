@@ -1,7 +1,7 @@
-# GNB-Bot — Полная инструкция поведения
+# GNB-Bot — Поведенческая справка
 
-> Этот документ — единственный источник правды для поведения бота.
-> Бот ОБЯЗАН перечитывать его при каждом запуске и следовать ему.
+> Live runtime prompt now lives in `docs/RUNTIME-PROMPT.md`.
+> This document is a longer behavior reference, not the direct runtime load target.
 
 ---
 

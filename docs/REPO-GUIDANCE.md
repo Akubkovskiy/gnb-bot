@@ -11,7 +11,7 @@ It combines:
 - SQLite knowledge/state
 - bot-specific Claude prompt and skill surfaces
 
-This repo is unusual because the root `CLAUDE.md` is part of the live runtime prompt surface and should not be casually repurposed as a generic repo guide.
+This repo is unusual because its live runtime prompt is stored alongside repo docs and must be kept separate from operator guidance.
 
 ## Read First
 
@@ -19,19 +19,22 @@ Before editing anything, inspect:
 
 1. `STATUS.md`
 2. `INDEX.md`
-3. `docs/BOT_INSTRUCTION.md`
-4. `docs/FIELD-MAP.md`
-5. `docs/RUNTIME-DEBUG-TO-DATA-MAP.md`
-6. `src/index.ts`
-7. `src/telegram/handlers.ts`
-8. `src/intake/`
-9. `src/db/`
-10. `memory/projects/gnb-bot.md`
-11. `memory/bots/gnb.md`
+3. root `CLAUDE.md`
+4. `docs/RUNTIME-PROMPT.md`
+5. `docs/BOT_INSTRUCTION.md`
+6. `docs/FIELD-MAP.md`
+7. `docs/RUNTIME-DEBUG-TO-DATA-MAP.md`
+8. `src/index.ts`
+9. `src/telegram/handlers.ts`
+10. `src/intake/`
+11. `src/db/`
+12. `memory/projects/gnb-bot.md`
+13. `memory/bots/gnb.md`
 
 ## Guidance Split
 
-- root `CLAUDE.md` = runtime/system prompt surface
+- root `CLAUDE.md` = repo-local project pack
+- `docs/RUNTIME-PROMPT.md` = runtime/system prompt surface
 - `docs/REPO-GUIDANCE.md` = repo-local operator guidance
 - `STATUS.md` + `INDEX.md` = lightweight project-pack entrypoints
 
@@ -67,11 +70,11 @@ Important local/runtime state outside Obsidian:
 - `gnb.db`
 - `temp_files/`
 - templates and generated artifacts
-- root `CLAUDE.md` as runtime prompt surface
+- `docs/RUNTIME-PROMPT.md` as runtime prompt surface
 
 ## High-Risk Areas
 
-- root `CLAUDE.md`
+- `docs/RUNTIME-PROMPT.md`
 - `src/telegram/handlers.ts`
 - `src/intake/`
 - `src/db/`
@@ -80,7 +83,7 @@ Important local/runtime state outside Obsidian:
 
 ## Safe Working Rules
 
-- Do not casually rewrite root `CLAUDE.md`; it is runtime behavior.
+- Do not casually rewrite `docs/RUNTIME-PROMPT.md`; it is runtime behavior.
 - Prefer additive repo guidance in `docs/` and `ops/`.
 - Treat SQLite and generated artifacts as real state, not scratch data.
 - If changing intake or review flow, preserve session continuity and field mapping integrity.
