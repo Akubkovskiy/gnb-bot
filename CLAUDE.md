@@ -16,16 +16,17 @@ It owns:
 1. `STATUS.md`
 2. `INDEX.md`
 3. `docs/REPO-GUIDANCE.md`
-4. `docs/RUNTIME-PROMPT.md`
-5. `ops/deploy.md`
-6. `ops/backup.md`
-7. `ops/restore.md`
+4. `ops/deploy.md`
+5. `ops/backup.md`
+6. `ops/restore.md`
 
 ## Prompt Routing
 
 - `docs/RUNTIME-PROMPT.md` is the live runtime prompt source used by the bot
 - root `CLAUDE.md` is now the repo-local project pack for operators and coding agents
 - `docs/BOT_INSTRUCTION.md` is a longer behavior/reference note, not the live prompt entrypoint
+- read `docs/RUNTIME-PROMPT.md` only for runtime behavior, prompt surgery, or handler/prompt alignment work
+- read `docs/BOT_INSTRUCTION.md` only when the longer behavior reference is actually needed
 
 ## Memory Routing
 
