@@ -1,7 +1,11 @@
-# GNB-Bot — Поведенческая справка
+# GNB-Bot — Behavior Archive (NOT the runtime prompt)
 
-> Live runtime prompt now lives in `docs/RUNTIME-PROMPT.md`.
-> This document is a longer behavior reference, not the direct runtime load target.
+> **WARNING:** this file is NOT loaded by the bot runtime and is NOT a fallback.
+> The live runtime prompt is `docs/RUNTIME-PROMPT.md`. That file is the only source of truth for live bot behavior.
+>
+> This document is a longer historical behavior reference. It may be divergent from the current runtime (different command names, different numbered sections). Do not treat it as authoritative for current bot behavior.
+>
+> Operators and coding agents: only read this file if you explicitly need the longer behavior reference, and always cross-check anything you quote against `docs/RUNTIME-PROMPT.md` first.
 
 ---
 

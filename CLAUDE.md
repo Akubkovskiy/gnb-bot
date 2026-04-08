@@ -22,11 +22,10 @@ It owns:
 
 ## Prompt Routing
 
-- `docs/RUNTIME-PROMPT.md` is the live runtime prompt source used by the bot
-- root `CLAUDE.md` is now the repo-local project pack for operators and coding agents
-- `docs/BOT_INSTRUCTION.md` is a longer behavior/reference note, not the live prompt entrypoint
+- `docs/RUNTIME-PROMPT.md` is the ONLY live runtime prompt source; the runtime loader fails loudly if it is missing
+- root `CLAUDE.md` is the repo-local project pack for operators and coding agents
+- `docs/BOT_INSTRUCTION.md` is a historical behavior archive, NOT a runtime source and NOT a fallback; it may be divergent from current runtime behavior
 - read `docs/RUNTIME-PROMPT.md` only for runtime behavior, prompt surgery, or handler/prompt alignment work
-- read `docs/BOT_INSTRUCTION.md` only when the longer behavior reference is actually needed
 
 ## Memory Routing
 

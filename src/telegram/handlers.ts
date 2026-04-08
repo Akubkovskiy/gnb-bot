@@ -58,19 +58,14 @@ import {
 import { buildStorageFileName, extractExtension } from "../storage/document-naming.js";
 
 function loadClaudeSystemPrompt(): string {
-  const candidates = [
-    path.join(process.cwd(), "docs", "RUNTIME-PROMPT.md"),
-    path.join(process.cwd(), "docs", "BOT_INSTRUCTION.md"),
-    path.join(process.cwd(), "CLAUDE.md"),
-  ];
-
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
-      return fs.readFileSync(candidate, "utf-8");
-    }
+  const runtimePrompt = path.join(process.cwd(), "docs", "RUNTIME-PROMPT.md");
+  if (!fs.existsSync(runtimePrompt)) {
+    throw new Error(
+      `Live runtime prompt not found at ${runtimePrompt}. ` +
+        `This file is the only supported runtime source; docs/BOT_INSTRUCTION.md and CLAUDE.md are not fallbacks.`,
+    );
   }
-
-  throw new Error("Runtime prompt file not found.");
+  return fs.readFileSync(runtimePrompt, "utf-8");
 }
 
 const CLAUDE_SYSTEM = loadClaudeSystemPrompt();

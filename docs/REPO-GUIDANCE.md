@@ -20,16 +20,17 @@ Before editing anything, inspect:
 1. `STATUS.md`
 2. `INDEX.md`
 3. root `CLAUDE.md`
-4. `docs/RUNTIME-PROMPT.md`
-5. `docs/BOT_INSTRUCTION.md`
-6. `docs/FIELD-MAP.md`
-7. `docs/RUNTIME-DEBUG-TO-DATA-MAP.md`
-8. `src/index.ts`
-9. `src/telegram/handlers.ts`
-10. `src/intake/`
-11. `src/db/`
-12. `memory/projects/gnb-bot.md`
-13. `memory/bots/gnb.md`
+4. `docs/RUNTIME-PROMPT.md` (only for runtime/prompt surgery)
+5. `docs/FIELD-MAP.md`
+6. `docs/RUNTIME-DEBUG-TO-DATA-MAP.md`
+7. `src/index.ts`
+8. `src/telegram/handlers.ts`
+9. `src/intake/`
+10. `src/db/`
+11. `memory/projects/gnb-bot.md`
+12. `memory/bots/gnb.md`
+
+`docs/BOT_INSTRUCTION.md` is a historical behavior archive, NOT a runtime source. Only read it when you explicitly need the longer reference, and do not treat it as authoritative for current behavior.
 
 ## Guidance Split
 

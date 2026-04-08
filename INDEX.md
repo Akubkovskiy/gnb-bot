@@ -13,9 +13,11 @@
 ## By Task
 
 ### Runtime prompt / bot behavior
-- `docs/RUNTIME-PROMPT.md`
-- `docs/BOT_INSTRUCTION.md`
+- `docs/RUNTIME-PROMPT.md` (the single live runtime source)
 - `skills/`
+
+### Historical behavior archive (rarely needed, NOT runtime)
+- `docs/BOT_INSTRUCTION.md` — may be divergent from runtime; do not treat as authoritative
 
 ### Telegram handler flow
 - `src/index.ts`
