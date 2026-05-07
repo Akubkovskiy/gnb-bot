@@ -1,0 +1,97 @@
+{
+  "phase": "0.5a",
+  "date": "2026-05-07",
+  "status": "NO_SPLIT_BRAIN",
+  "verdict": "YandexDisk .gnb-memory is empty — no merge needed.",
+
+  "sources": {
+    "yandex_disk": {
+      "path": "C:\\Users\\kubko\\YandexDisk\\Работа\\.gnb-memory\\gnb.db",
+      "size_bytes": 4096,
+      "modified": "2026-03-17T17:52:47Z",
+      "tables": 17,
+      "row_counts": {
+        "organizations": 0,
+        "people": 0,
+        "customers": 0,
+        "customer_aliases": 0,
+        "objects": 0,
+        "transitions": 0,
+        "documents": 0,
+        "all_others": 0
+      },
+      "legacy_json": {
+        "customers.json": "empty object",
+        "organizations.json": "empty array",
+        "people.json": "empty array",
+        "gnb-transitions.json": "empty array",
+        "projects.json": "empty array"
+      },
+      "conclusion": "Initialized but never populated. Was an early local experiment."
+    },
+    "fi_prod": {
+      "path": "/root/gnb-data/output/.gnb-memory/gnb.db",
+      "size_bytes": 212992,
+      "modified": "2026-03-18T14:14:00Z",
+      "tables": 17,
+      "row_counts": {
+        "organizations": 3,
+        "people": 4,
+        "customers": 2,
+        "customer_aliases": 3,
+        "objects": 2,
+        "transitions": 0,
+        "documents": 1
+      },
+      "data_summary": {
+        "organizations": ["АО «ОЭК»", "АНО «ОЭК Стройтрест»", "ООО «СПЕЦИНЖСТРОЙ»"],
+        "people": ["Гайдуков Н.И.", "Коробков Ю.Н.", "Буряк А.М.", "Щеглов Р.А."],
+        "customers": ["Крафт", "Дремин"],
+        "objects": ["Марьино (kraft)", "Золотаревская (dremin)"]
+      },
+      "conclusion": "Contains seed data only (hardcoded OEK ecosystem from src/db/seed.ts). No transitions."
+    },
+    "fi_also_found": {
+      "path": "/root/gnb-data/Работа/.gnb-memory/gnb.db",
+      "size_bytes": 4096,
+      "modified": "2026-03-17T20:51:00Z",
+      "conclusion": "Empty (no tables). Created by YandexDisk sync to /root/gnb-data/."
+    }
+  },
+
+  "diff": {
+    "rows_in_yandex_only": [],
+    "rows_in_fi_only": [
+      "3 organizations (seed data)",
+      "4 people (seed data)",
+      "2 customers (early intake)",
+      "3 customer_aliases",
+      "2 objects (early intake)",
+      "1 document"
+    ],
+    "conflicts": []
+  },
+
+  "actions": {
+    "merge_needed": false,
+    "reason": "YandexDisk DB is empty. FI prod data is seed-only (no transitions). Nothing to merge.",
+    "recommended_guard": {
+      "action": "rename",
+      "from": "C:\\Users\\kubko\\YandexDisk\\Работа\\.gnb-memory\\",
+      "to": "C:\\Users\\kubko\\YandexDisk\\Работа\\.gnb-memory.archived\\",
+      "reason": "Prevent future confusion. Mark as legacy/archived.",
+      "status": "PENDING_OWNER_ACTION",
+      "note": "Owner should run: Rename-Item 'C:\\Users\\kubko\\YandexDisk\\Работа\\.gnb-memory' '.gnb-memory.archived'"
+    }
+  },
+
+  "fi_env_verified": {
+    "YANDEX_DISK_PATH": "/root/gnb-data",
+    "WORK_ROOT": "output",
+    "MEMORY_DIR": ".gnb-memory",
+    "resolved_db_path": "/root/gnb-data/output/.gnb-memory/gnb.db",
+    "note": "Bot correctly uses output/ not Работа/. /root/gnb-data/Работа/ is YandexDisk-synced local path, never written by bot."
+  },
+
+  "open_questions": []
+}
