@@ -41,11 +41,12 @@ export function seedFromJson(memoryDir: string): { customers: number; people: nu
   const repos = createRepos(db);
   const stats = { customers: 0, people: 0, transitions: 0 };
 
-  // === Seed known organizations (hardcoded OEK ecosystem) ===
+  // === Seed known organizations (OEK + MKS ecosystems) ===
   const knownOrgs = [
     { id: "oek", name: "АО «Объединенная энергетическая компания»", short_name: "АО «ОЭК»", inn: "7720522853", ogrn: "1057746394155", legal_address: "115035, г. Москва, Раушская наб., д.8", phone: "8 (495) 657-91-01", sro_name: "Ассоциация строительных компаний «Межрегиональный строительный комплекс»" },
     { id: "stroytrest", name: "АНО «ОЭК Стройтрест»", short_name: "АНО «ОЭК Стройтрест»", inn: "7708442087", ogrn: "1247700649591", legal_address: "107078, г. Москва, ул Каланевская, д. 11, стр.2, помещ. 415", phone: "+7(495)228-19-79", sro_name: "Саморегулируемая организация" },
-    { id: "sis", name: "ООО «СПЕЦИНЖСТРОЙ»", short_name: "ООО «СПЕЦИНЖСТРОЙ»", inn: "7806258664", ogrn: "1167847487444", legal_address: "123001, г. Москва, ул. Садовая-Кудринская, д. 25, помещ. 2/4", phone: "", sro_name: "Ассоциация «Объединение проектных организаций»" },
+    { id: "sis", name: "ООО «СПЕЦИНЖСТРОЙ»", short_name: "ООО «СПЕЦИНЖСТРОЙ»", inn: "7806258664", ogrn: "1167847487444", legal_address: "123001, г. Москва, ул. Садовая-Кудринская, д. 25, помещ. 2/4", phone: "", sro_name: "Ассоциация «Объединение проектных организаций»", sro_number: "СРО-С-265-10042013", sro_date: "22.12.2020" },
+    { id: "mks", name: "Филиал ПАО «Россети Московский регион» - Московские кабельные сети", short_name: "МКС", inn: "5036065113", ogrn: "1057746555811", legal_address: "115114, г. Москва, 2-й Павелецкий проезд, дом 3, корп.2", phone: "8(495)668-22-28", sro_name: "" },
   ];
   for (const org of knownOrgs) {
     repos.orgs.upsert(org);
