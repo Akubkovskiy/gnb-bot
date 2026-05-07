@@ -1,7 +1,0 @@
-﻿54|A=materials_aosr|B=|F=
-55|A=subsequent_works|B=Прокладке кабельных линий|F=Прокладке кабельных линий
-56|A=aosr_page1_caption|B=|F=
-57|A=aosr_page2_caption|B=|F=
-58|A=aosr_object_caption|B=|F=
-59|A=aosr_work_description|B=|F=
-60|A=drawing_caption|B=|F=

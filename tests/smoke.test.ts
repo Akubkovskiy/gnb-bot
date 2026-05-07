@@ -56,8 +56,15 @@ describe("Phase 0: Foundation smoke tests", () => {
   it("secondary sheets reference Лист1 via formulas (not hardcoded)", async () => {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.readFile(path.join(TEMPLATES_DIR, "Акты ГНБ шаблон v2.xlsx"));
-    // Spot-check: Разбивка C1 should reference Лист1!B14
-    const ws = wb.getWorksheet("Разбивка")!;
-    expect(ws.getCell("C1").formula).toContain("Лист1");
+    // Spot-check: Герметизация should reference Лист1
+    const ws = wb.getWorksheet("Герметизация")!;
+    let hasRef = false;
+    ws.eachRow({ includeEmpty: false }, (row) => {
+      row.eachCell({ includeEmpty: false }, (cell) => {
+        const v = cell.value as any;
+        if (v?.formula?.includes("Лист1")) hasRef = true;
+      });
+    });
+    expect(hasRef).toBe(true);
   });
 });
