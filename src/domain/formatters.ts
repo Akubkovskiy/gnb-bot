@@ -97,35 +97,19 @@ export function parseDate(input: string): DateComponents {
 // === Signatory formatting ===
 
 /**
- * B-column: full description for signatory.
- * Per CLAUDE.md: "B-колонка = описание (орг + должн. + ФИО)"
- * Example: "Мастер по ЭРС СВРЭС АО «ОЭК» Коробков Ю.Н."
+ * B-column: short role label for signatory.
+ * B-колонка = роль + организация (без должности и ФИО).
  *
- * Note: B-column is a SHORT label, NOT the full АОСР line.
- * aosr_full_line contains НРС/приказ details and is used in АОСР cells.
+ * Examples:
+ *   "Представитель АО «ОЭК»"
+ *   "Подрядчик АНО «ОЭК Стройтрест»"
+ *   "Субподрядчик ООО «СПЕЦИНЖСТРОЙ»"
+ *   "Технадзор АО «ОЭК»"
  *
- * Strategy:
- * 1. If org_description contains "Представитель" → it's already a role label, use as-is
- * 2. Otherwise build from: position + org + name
+ * Position and full_name belong to C-column (formatSignatorySign).
  */
 export function formatSignatoryDesc(s: Signatory): string {
-  // If org_description is already a full role label ("Представитель..."), use as-is
-  if (s.org_description && /^Представител|^Технический/.test(s.org_description)) {
-    return s.org_description;
-  }
-
-  // Build from parts: position + org + name
-  const pos = s.position && s.position !== "—" ? s.position : "";
-  const org = s.org_description || "";
-  const name = s.full_name || "";
-
-  if (pos && org && name) {
-    return `${pos} ${org} ${name}`.trim();
-  }
-  if (org && name) {
-    return `${org} ${name}`.trim();
-  }
-  return s.org_description || s.full_name || "";
+  return s.org_description || "";
 }
 
 /**

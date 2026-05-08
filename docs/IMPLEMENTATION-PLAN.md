@@ -589,6 +589,51 @@ Phase 7 (QoL) ←── Phase 4
 
 **Полный P1 (+ Phases 5-6):** /edit с ревизиями, приём PDF-документов.
 
+### Phase 7.5: Template & Generation Stabilization (P0)
+
+Phase 7 validation gate пройден (2026-03-21), но generation layer не считается product-ready.
+Шаблоны работают, файлы создаются, но template contract не стабилизирован,
+покрытие сценариев однобокое, шаблон актов не доведён до чистого продуктового состояния.
+
+**Правило:** storage/cloud (Phase 8) заблокирован до закрытия Phase 7.5.
+
+| # | Задача | DoD | Зависимость |
+|---|--------|-----|-------------|
+| 7.5.1 | Template cleanup — общие акты | Шаблон актов в чистом human-readable состоянии: без residual data, с понятными подписями ячеек, упрощённый входной лист. Логика "входной лист → печатные листы" сохранена | Phase 7 |
+| 7.5.2 | Signatory scenario: 2 подписанта | Тест + stage smoke check: 2 подписанта (без sign3). Корректные пробелы в B22/C22, корректная нумерация, АОСР sign3 cells = пробел | 7.5.1 |
+| 7.5.3 | Signatory scenario: 3 подписанта | Тест + stage smoke check: 3 подписанта (с sign3). Закрепить как golden reference. Текущий fixture ЗП 5-5 как baseline | 7.5.1 |
+| 7.5.4 | Organization field coverage | Проверить customer_org (department + short_name vs name), contractor/designer SRO fields в АОСР. Edge cases: пустой department, пустой short_name | 7.5.1 |
+| 7.5.5 | Pipe & GNB params edge cases | Проверить: пустой plan_length, пустой drill_diameter, пустой configuration. Убедиться что renderer не ломается и пишет пробелы | 7.5.1 |
+| 7.5.6 | Mapping stabilization | cell-maps.ts = source of truth. UNIFIED_SCHEMA.md согласован с cell-maps.ts. Задокументировать какие поля используются, какие игнорируются | 7.5.1 |
+| 7.5.7 | Template architecture decision | Отдельное решение после 7.5.1: остаёмся на split templates или переходим на master template. Решение фиксируется в TEMPLATE-ROADMAP.md. Не принимать заранее | 7.5.1–7.5.6 |
+
+**Явно не входит в Phase 7.5:**
+- АОСР доработки (designer_representative, welding_end_date) — отдельный scope, не блокирует акты
+- Шаблоны для другого заказчика (не ОЭК)
+- Новая Москва, МКС — другой layout актов
+- Другое количество / структура подписантов (>4)
+- Separate construction control representative
+
+**Acceptance criteria:**
+- [ ] Template файл актов чистый (без residual data, с понятными подписями ячеек)
+- [ ] Тесты покрывают минимум 2 сценария подписантов (2 и 3)
+- [ ] Stage generation validation на 2 сценариях: реальный smoke check generated Excel output
+- [ ] Mapping задокументирован и стабилизирован (cell-maps.ts + UNIFIED_SCHEMA.md согласованы)
+- [ ] АОСР не блокирует работу по актам — отдельный scope
+- [ ] Template architecture decision принято и зафиксировано (split vs master)
+
+---
+
+### Post-7.5 Roadmap
+
+| Phase | Фокус | Зависимость |
+|-------|-------|-------------|
+| 8 | Storage & Cloud placement (Google Drive) | Phase 7.5 |
+| 9 | Print-pack PDF assembly | Phase 8 |
+| 10 | Documentation registry (OEK) | Phase 8 |
+| 11 | Drilling protocol | Separate track |
+| Future | Новая Москва, МКС, другие заказчики, другой layout | Deferred |
+
 ---
 
 ## 6. Риски и митигация

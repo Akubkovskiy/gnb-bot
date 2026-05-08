@@ -65,6 +65,7 @@ function runMigrations(db: Database.Database): void {
       phone TEXT,
       sro_name TEXT,
       sro_number TEXT,
+      sro_date TEXT,
       aosr_block TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -278,6 +279,12 @@ function runMigrations(db: Database.Database): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
+
+  // Migrations: add columns that may not exist yet
+  const addColumnIfMissing = (table: string, column: string, type: string) => {
+    try { db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`); } catch { /* already exists */ }
+  };
+  addColumnIfMissing("organizations", "sro_date", "TEXT");
 
   // Create indexes (IF NOT EXISTS)
   db.exec(`

@@ -90,18 +90,77 @@ async function main() {
   console.log(`Max Δslope: ${maxSlopeErr.toFixed(4)}  (tol ${SLOPE_TOL})`);
   console.log(failures === 0 ? "\n✅ All sections within tolerance." : `\n❌ ${failures} sections out of tolerance.`);
 
-  // Render protocol
+  // Render protocol — full Золоторожская data (exact strings from original)
   const result = await renderProtocol(
     {
-      object_title: "«ПКЛ 20 кВ №29-1 от места врезки в ПКЛ №29 до РП Золоторожская»",
+      // A6 value has CRLF line breaks (original Excel cell had Alt+Enter breaks)
+      object_title: "«ПКЛ 20 кВ №29-1 от места врезки в ПКЛ №29 до РП\r\nЗолоторожский вал, вл. 11, ПКЛ 20кВ №29-2 от места врезки в ПКЛ №29 до РП\r\nЗолоторожский вал, вл.11 (РП 1-7)».\r\nПО адресу: г. Москва, Измайловское ш., д.4а\r\n",
       transition_number: "№16",
-      date: new Date(2025, 0, 1),
+      // A4, A23, A25: no dates → intentionally blank (original has manual placeholders)
+      // A10: exact string from original (multi-space formatting, ends before number)
+      pipe_info: "Труба:Трубы ЭЛЕКТРОПАЙП ПРО 225/170-N1250 F1, 2шт.     Dу=2d225мм,    Lобщ=",
+      total_length_m: 843.8,
+      work_steps: [
+        "1. Пройдена пилотная скважина d=120 мм.",
+        '2. Расширение скважины расширителем "Кодиак" d=600 мм.',
+        "3. Протяжка труб 2d=225 мм",
+      ],
+      rig_type: "GD 360C-LS",
+      locating_system: "Underground Magnetics Mag 9",
+      probe_type: "Echo 110",
+      rod_length_cm: 300,
+      foreman_name: "Кононенко А.С.",
       points: computed,
     },
     OUT_DIR
   );
 
   console.log(`\nRendered: ${result.filePath} (${result.pointCount} sections)`);
+
+  // ---------------------------------------------------------------------------
+  // Header cell diff: generated vs original
+  // ---------------------------------------------------------------------------
+  console.log("\n--- Header cell diff (generated vs original) ---");
+  const wbOrig = XLSX.readFile(ORIGINAL, { cellStyles: true });
+  const wsOrig = wbOrig.Sheets["10-1С"];
+  const wbGen  = XLSX.readFile(result.filePath, { cellStyles: true });
+  const wsGen  = wbGen.Sheets[wbGen.SheetNames[0]];
+
+  // A4, A23, A25: intentionally blank (original has manual date placeholders;
+  //   renderer leaves them empty for the user to fill)
+  const MANUAL_BLANKS = new Set(["A4", "A23", "A25"]);
+
+  const headerCells = [
+    "A2", "A4", "A6", "A8", "A10", "I10",
+    "A12", "A13", "A14", "A15",
+    "A17", "A19", "A21", "A23", "A25",
+    "A61", "A64", "E64",
+  ];
+
+  let hdiffs = 0;
+  for (const addr of headerCells) {
+    const orig = wsOrig[addr];
+    const gen  = wsGen[addr];
+    const ov = orig ? String(orig.v ?? "").trim() : "<empty>";
+    const gv = gen  ? String(gen.v  ?? "").trim() : "<empty>";
+
+    if (MANUAL_BLANKS.has(addr)) {
+      console.log(`~ ${addr.padEnd(4)} | manual-blank (orig: ${ov.slice(0, 40)})`);
+      continue;
+    }
+
+    const match = ov === gv ? "✓" : "✗";
+    if (ov !== gv) {
+      hdiffs++;
+      console.log(`${match} ${addr.padEnd(4)} | orig: ${ov.slice(0, 70)}`);
+      console.log(`       gen:  ${gv.slice(0, 70)}`);
+    }
+  }
+  if (hdiffs === 0) {
+    console.log("✅ All header cells match.");
+  } else {
+    console.log(`\n❌ ${hdiffs} header cell(s) differ.`);
+  }
 }
 
 main().catch((e) => {

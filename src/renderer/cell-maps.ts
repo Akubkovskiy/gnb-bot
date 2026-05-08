@@ -11,8 +11,8 @@
 /** Maps transition field names to Лист1 cell addresses. */
 export const INTERNAL_ACTS_CELLS = {
   // Identification (rows 2-11)
-  title_line: "B3",
-  object_name: "B4",
+  // B3 empty (row kept for spacing)
+  title_line: "B4",
   address: "B5",
   gnb_number: "B6",
   project_number: "B7",
@@ -24,19 +24,36 @@ export const INTERNAL_ACTS_CELLS = {
   // Organizations (rows 13-16)
   customer_display: "B14",
   contractor_display: "B15",
-  designer_display: "B16",
+  contractor_label: "A15",
+  sub_display: "B16",
+  sub_label: "A16",
 
-  // Signatories — B column (org description)
+  // Signatories — B column (org description: "Представитель [org]")
   sign1_desc: "B20",
   sign2_desc: "B21",
   sign3_desc: "B22",
-  tech_desc: "B23",
 
-  // Signatories — C column (position + name, no underscores)
-  sign1_line: "C20",
-  sign2_line: "C21",
-  sign3_line: "C22",
-  tech_line: "C23",
+  // Signatories — C column (position)
+  sign1_position: "C20",
+  sign2_position: "C21",
+  sign3_position: "C22",
+
+  // Signatories — D column (full_name)
+  sign1_name: "D20",
+  sign2_name: "D21",
+  sign3_name: "D22",
+
+  // Additional fields needed by print sheets (rows 17, 23, 35-37)
+  designer: "B17",            // проектировщик org name
+  welding_end_date: "B23",    // дата окончания сварки
+  customer_short: "E14",      // заказчик short (отдельно от B14)
+  gnb_method: "B35",          // метод ("ГНБ")
+  act_date: "B36",            // дата акта (отдельно от completion_date)
+  profile_length_solo: "B37", // profile length as standalone number (for CONCATENATE formulas)
+
+  // SRO — executor's self-regulatory org certificate (rows 33-34)
+  sro_number: "B33",
+  sro_date: "B34",
 
   // Pipe (rows 25-27)
   pipe_mark: "B26",

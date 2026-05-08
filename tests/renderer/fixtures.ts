@@ -37,6 +37,8 @@ const specinjstroy: Organization = {
   legal_address: "123001, г. Москва, ул. Садовая-Кудринская, д. 25, помещ. 2/4",
   phone: "",
   sro_name: "СРО Ассоциация «Объединение проектных организаций»",
+  sro_number: "СРО-С-265-10042013",
+  sro_date: "22.12.2020",
 };
 
 const sign1: Signatory = {

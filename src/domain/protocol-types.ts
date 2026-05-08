@@ -35,16 +35,42 @@ export interface ProtocolPoint {
 
 /** Full input for the protocol renderer. */
 export interface ProtocolInput {
-  /** Project/object title (fills the header). */
+  /** Project/object title (fills A6). */
   object_title: string;
-  /** Transition/bore number, e.g. "№1-1". */
+  /**
+   * Transition/bore number.
+   * Used in title row as-is: "Протокол бурения ГНБ {transition_number}".
+   * Pass just the number (e.g. "16") or with prefix ("№1-1") as needed.
+   */
   transition_number: string;
-  /** Date shown on the protocol. */
-  date: Date;
-  /** Bore start date (if different from date). */
+  /** Protocol date (shown in A4 if provided). */
+  date?: Date;
+  /** Work start date (A23). */
   date_start?: Date;
-  /** Bore end date (if different from date). */
+  /** Work end date (A25). */
   date_end?: Date;
   /** Bore points — at least 2 required. */
   points: ProtocolPoint[];
+
+  // --- Optional header fields ---
+
+  /** A10: pipe description, e.g. "Труба:Трубы ЭЛЕКТРОПАЙП ПРО 225/170-N1250 F1, 2шт." */
+  pipe_info?: string;
+  /** I10: total bore length, m (e.g. 843.8) */
+  total_length_m?: number;
+  /**
+   * A13–A1x: list of completed work steps.
+   * e.g. ["1. Пройдена пилотная скважина d=120 мм.", "2. Расширение..."]
+   */
+  work_steps?: string[];
+  /** A17: drilling rig model, e.g. "GD 360C-LS" */
+  rig_type?: string;
+  /** A19: locating system, e.g. "Underground Magnetics Mag 9" */
+  locating_system?: string;
+  /** A21: probe type, e.g. "Echo 110" */
+  probe_type?: string;
+  /** A61: drill rod length in cm (shown as "Длина каждой штанги - N сантиметров") */
+  rod_length_cm?: number;
+  /** E64: foreman/supervisor name, e.g. "Кононенко А.С." */
+  foreman_name?: string;
 }

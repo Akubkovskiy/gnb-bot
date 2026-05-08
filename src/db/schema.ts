@@ -26,6 +26,7 @@ export const organizations = sqliteTable("organizations", {
   phone: text("phone"),
   sro_name: text("sro_name"),
   sro_number: text("sro_number"),
+  sro_date: text("sro_date"),
   aosr_block: text("aosr_block"),
   created_at: text("created_at").notNull().default(now),
   updated_at: text("updated_at").notNull().default(now),
