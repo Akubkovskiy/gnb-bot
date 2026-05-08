@@ -16,6 +16,10 @@ import { renderInternalActs } from "../renderer/internal-acts.js";
 import { renderAosr } from "../renderer/aosr.js";
 import { renderMksActs } from "../renderer/mks-acts.js";
 import type { MksActsInput } from "../domain/mks-types.js";
+import { parseCatalog, parseTextCatalog } from "../parser/coord-catalog.js";
+import { calcProtocol } from "../calculator/gnb-math.js";
+import { renderProtocol } from "../renderer/protocol.js";
+import { extractProfileFromPdf } from "../extractor/pdf-profile.js";
 import { getProjectDir } from "../utils/paths.js";
 import {
   startIntake,
@@ -71,6 +75,96 @@ function loadClaudeSystemPrompt(): string {
 }
 
 const CLAUDE_SYSTEM = loadClaudeSystemPrompt();
+
+// ---------------------------------------------------------------------------
+// Protocol session state — chats awaiting coordinate catalog or PDF
+// ---------------------------------------------------------------------------
+const protocolSessions = new Map<number, { transition_number: string; date: Date }>();
+
+function setProtocolSession(chatId: number, transition_number = "№?", date = new Date()) {
+  protocolSessions.set(chatId, { transition_number, date });
+}
+
+function getProtocolSession(chatId: number) {
+  return protocolSessions.get(chatId);
+}
+
+function clearProtocolSession(chatId: number) {
+  protocolSessions.delete(chatId);
+}
+
+async function handleProtocolInput(
+  ctx: Context,
+  chatId: number,
+  statusMsgId: number,
+  localPath: string,
+  fileName: string,
+  ext: string,
+  session: { transition_number: string; date: Date },
+) {
+  const FALLBACK_MSG =
+    "❌ Не удалось распознать файл как каталог координат.\n\n" +
+    "Пришли Excel с колонками [№, X, Y, H] или текст с координатами построчно:\n" +
+    "`1  419854.23  142367.81  147.52`";
+
+  try {
+    let rawPoints;
+
+    if (ext === ".pdf") {
+      // Vision extraction
+      await ctx.api.editMessageText(chatId, statusMsgId, "🔍 Извлекаю точки из PDF (до 60 сек)...");
+      try {
+        const result = await extractProfileFromPdf(localPath, 60_000);
+        rawPoints = result.points;
+      } catch (pdfErr) {
+        logger.warn({ pdfErr }, "PDF Vision extraction failed — asking user for catalog");
+        await ctx.api.editMessageText(
+          chatId, statusMsgId,
+          "⚠️ PDF слишком сложный для автоматического распознавания.\n\n" +
+          "Пришли *каталог координат* (Excel или текст) — это надёжнее.\n" +
+          "Команда /protocol ещё активна.",
+          { parse_mode: "Markdown" }
+        );
+        return; // keep session active
+      }
+    } else {
+      // Excel/CSV catalog
+      rawPoints = await parseCatalog(localPath);
+    }
+
+    const points = calcProtocol(rawPoints);
+    await ctx.api.editMessageText(chatId, statusMsgId, `⚙️ Вычислено ${points.length} участков, генерирую протокол...`);
+
+    const outDir = getTempDir();
+    const result = await renderProtocol(
+      {
+        object_title: `ГНБ ${session.transition_number}`,
+        transition_number: session.transition_number,
+        date: session.date,
+        points,
+      },
+      outDir
+    );
+
+    clearProtocolSession(chatId);
+
+    await ctx.api.editMessageText(
+      chatId, statusMsgId,
+      `✅ Протокол готов — ${points.length} участков\n\n` +
+      `📋 *Колонка D (Глубина)* оставлена пустой — заполни из журнала бурения.`,
+      { parse_mode: "Markdown" }
+    );
+    await ctx.api.sendDocument(chatId, new InputFile(result.filePath));
+    try { fs.unlinkSync(result.filePath); } catch { /* ignore */ }
+
+  } catch (err) {
+    logger.error({ err }, "Ошибка /protocol handleProtocolInput");
+    const msg = err instanceof Error ? err.message : "неизвестная ошибка";
+    await ctx.api.editMessageText(chatId, statusMsgId, `${FALLBACK_MSG}\n\n_Ошибка: ${msg}_`, { parse_mode: "Markdown" });
+  } finally {
+    try { if (localPath) fs.unlinkSync(localPath); } catch { /* ignore */ }
+  }
+}
 
 function getSystemPromptWithMemory(): string {
   const memory = buildMemoryContext();
@@ -587,6 +681,33 @@ export function registerHandlers(bot: Bot): void {
     }
   });
 
+  // === /protocol — generate drilling protocol from catalog or PDF ===
+
+  bot.command("protocol", async (ctx) => {
+    const chatId = ctx.chat.id;
+    // Parse optional args: /protocol №1-1  or  /protocol
+    const args = ctx.match?.trim() || "";
+    const transition_number = args || "№?";
+    setProtocolSession(chatId, transition_number);
+
+    await ctx.reply(
+      `📐 *Генератор протокола бурения ГНБ*\n\n` +
+      `Переход: *${transition_number}*\n\n` +
+      `Пришли один из вариантов:\n` +
+      `• *Excel-каталог координат* (колонки №, X, Y, H)\n` +
+      `• *PDF* продольного профиля ГНБ\n` +
+      `• *Текст* с координатами (каждая строка: N X Y H)\n\n` +
+      `Глубина бурения (колонка D) оставляется пустой — заполни вручную из журнала.\n\n` +
+      `_Чтобы отменить: /cancel_protocol_`,
+      { parse_mode: "Markdown" }
+    );
+  });
+
+  bot.command("cancel_protocol", async (ctx) => {
+    clearProtocolSession(ctx.chat.id);
+    await ctx.reply("Генерация протокола отменена.");
+  });
+
   // === Callback queries (inline buttons) ===
 
   bot.on("callback_query:data", async (ctx) => {
@@ -731,6 +852,15 @@ export function registerHandlers(bot: Bot): void {
     const fileName = doc.file_name || "unknown";
     const ext = path.extname(fileName).toLowerCase();
 
+    // Protocol session: user sent catalog or PDF after /protocol
+    const protSession = getProtocolSession(chatId);
+    if (protSession && [".xlsx", ".xls", ".csv", ".pdf", ".txt"].includes(ext)) {
+      const status = await ctx.reply(`📐 Обрабатываю ${fileName} как каталог координат...`);
+      const localPath = await downloadTelegramFile(bot, doc.file_id, fileName);
+      await handleProtocolInput(ctx, chatId, status.message_id, localPath, fileName, ext, protSession);
+      return;
+    }
+
     // If active intake — route to intake pipeline
     if (hasActiveIntake(chatId) && [".pdf", ".xls", ".xlsx", ".jpg", ".jpeg", ".png"].includes(ext)) {
       const status = await ctx.reply(`🔍 Обрабатываю ${fileName}...`);
@@ -820,6 +950,51 @@ export function registerHandlers(bot: Bot): void {
     if (!text || text.startsWith("/")) return;
 
     const chatId = ctx.chat.id;
+
+    // Protocol session: text with coordinate lines (N X Y H or N pk H)
+    const protSession = getProtocolSession(chatId);
+    if (protSession) {
+      // Heuristic: line with 3-4 numbers = coordinate row
+      const hasCoordLines = text.split("\n").some((l) => {
+        const nums = l.trim().split(/[\s,;]+/).filter((t) => /^-?\d+\.?\d*$/.test(t));
+        return nums.length >= 3;
+      });
+      if (hasCoordLines) {
+        const status = await ctx.reply("⚙️ Разбираю координаты...");
+        try {
+          const rawPoints = parseTextCatalog(text);
+          const points = calcProtocol(rawPoints);
+          await ctx.api.editMessageText(chatId, status.message_id, `⚙️ ${points.length} участков, генерирую...`);
+          const outDir = getTempDir();
+          const result = await renderProtocol(
+            {
+              object_title: `ГНБ ${protSession.transition_number}`,
+              transition_number: protSession.transition_number,
+              date: protSession.date,
+              points,
+            },
+            outDir
+          );
+          clearProtocolSession(chatId);
+          await ctx.api.editMessageText(
+            chatId, status.message_id,
+            `✅ Протокол готов — ${points.length} участков\n\n` +
+            `📋 _Колонка D (Глубина) пустая — заполни из журнала бурения._`,
+            { parse_mode: "Markdown" }
+          );
+          await ctx.api.sendDocument(chatId, new InputFile(result.filePath));
+          try { fs.unlinkSync(result.filePath); } catch { /* ignore */ }
+          return;
+        } catch (err) {
+          logger.error({ err }, "Ошибка /protocol text input");
+          await ctx.api.editMessageText(chatId, status.message_id,
+            `❌ ${err instanceof Error ? err.message : "Ошибка"}\n\nПришли файл или координаты в формате: \`N X Y H\``,
+            { parse_mode: "Markdown" }
+          );
+          return;
+        }
+      }
+    }
 
     // Check for active ingest session (standalone save flow)
     if (hasActiveIngestSession(chatId)) {
