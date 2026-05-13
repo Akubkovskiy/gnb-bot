@@ -15,10 +15,10 @@
  *
  * Parsed from: 1. Letchika Babushkina/МКС АОСР+РЭР ЗП 1-1.xlsx
  *   transition_number: №1-1
- *   dates: 2026-03-31 → 2026-04-05
+ *   dates: 05.03.2026 (разбивка) → 07.03 (протяжка), акт 11.03.2026 (сдача МГГТ)
  *   length_m: 65.65
  *   pipe: 6 × ЭЛЕКТРОПАЙП АМПЕРА РС II 160×8,9 SN16-N d160mm, final exp 650mm
- *   orgs: СПЕЦИНЖСТРОЙ (contractor/designer), СТРОЙМОНТАЖ (executor)
+ *   orgs: СПЕЦИНЖСТРОЙ (designer/проектировщик), СТРОЙМОНТАЖ (contractor+executor)
  *   signatories: Жидков (МКС), Блинов (contractor1/2/designer), Щеглов (executor), Швецов (РЭР)
  *
  * Run: npx tsx scripts/seed-babushkina.ts
@@ -313,7 +313,7 @@ async function main() {
   // ---------------------------------------------------------------------------
   console.log("\n=== Seeding transition ===");
 
-  // Parsed from act: date_start_serial=46112 → 2026-03-31, date_end_serial=46117 → 2026-04-05
+  // Даты из переписки: 05.03 разбивка+пилотное → 06.03 расширение → 07.03 протяжка → 11.03 сдача
   await db.run(sql`
     INSERT OR REPLACE INTO transitions
       (id, object_id, gnb_number, gnb_number_short, status,
@@ -332,14 +332,14 @@ async function main() {
        '___ШИФР___',
        '«Строительство 8КЛ-0,4кВ от новой ТП до ВРЩ-0,4 кВ, ГНБ переход №1-1»',
        'org-stroymontazh',
-       '2026-03-31', '2026-04-05', '2026-04-05',
+       '2026-03-05', '2026-03-07', '2026-03-11',
        65.65, 65.65,
        6, 160.0, 650.0,
        'ЭЛЕКТРОПАЙП АМПЕРА РС II 160 х 8,9 SN16 - N Fmax90 T120',
        'Паспорт качества №1317; Сертификат соответствия №РОСС RU.МЛ10.Н12248 с 19.12.2025',
-       datetime('now'), datetime('now'), '2026-04-05T00:00:00Z')
+       datetime('now'), datetime('now'), '2026-03-11T00:00:00Z')
   `);
-  console.log("  ✓ ГНБ ЗП 1-1 (31.03–05.04.2026, 65.65м, 6 труб d160)");
+  console.log("  ✓ ГНБ ЗП 1-1 (05.03–07.03.2026, акт 11.03, 65.65м, 6 труб d160)");
 
   // ---------------------------------------------------------------------------
   // Transition organizations
@@ -348,9 +348,9 @@ async function main() {
 
   const transOrgs = [
     { role: "customer",   org_id: "org-mks" },
-    { role: "contractor", org_id: "org-specinjstroy" },
-    { role: "designer",   org_id: "org-specinjstroy" },
-    { role: "executor",   org_id: "org-stroymontazh" },
+    { role: "contractor", org_id: "org-stroymontazh" },  // подрядчик — СТРОЙМОНТАЖ
+    { role: "designer",   org_id: "org-specinjstroy" },  // проектировщик — СПЕЦИНЖСТРОЙ
+    { role: "executor",   org_id: "org-stroymontazh" },  // исполнитель — СТРОЙМОНТАЖ
   ];
 
   for (const to of transOrgs) {
