@@ -163,6 +163,10 @@ export class TransitionRepo {
       .where(eq(s.transitions.id, id))
       .run();
   }
+
+  listAll() {
+    return this.db.select().from(s.transitions).all();
+  }
 }
 
 // === Transition Signatories ===
@@ -235,6 +239,12 @@ export class DocumentRepo {
       .set({ gdrive_file_id: gdriveFileId, gdrive_synced_at: new Date().toISOString(), updated_at: new Date().toISOString() })
       .where(eq(s.documents.id, id))
       .run();
+  }
+
+  findByGdriveId(gdriveFileId: string) {
+    return this.db.select().from(s.documents)
+      .where(eq(s.documents.gdrive_file_id, gdriveFileId))
+      .get();
   }
 }
 
