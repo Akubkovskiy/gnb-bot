@@ -73,6 +73,13 @@ export class PersonDocRepo {
   insert(doc: typeof s.personDocuments.$inferInsert) {
     return this.db.insert(s.personDocuments).values(doc).run();
   }
+
+  updateFilePath(id: number, filePath: string) {
+    return this.db.update(s.personDocuments)
+      .set({ file_path: filePath })
+      .where(eq(s.personDocuments.id, id))
+      .run();
+  }
 }
 
 // === Customers ===
@@ -219,6 +226,13 @@ export class DocumentRepo {
   updateFilePath(id: string, filePath: string) {
     return this.db.update(s.documents)
       .set({ file_path: filePath, updated_at: new Date().toISOString() })
+      .where(eq(s.documents.id, id))
+      .run();
+  }
+
+  updateGdriveInfo(id: string, gdriveFileId: string) {
+    return this.db.update(s.documents)
+      .set({ gdrive_file_id: gdriveFileId, gdrive_synced_at: new Date().toISOString(), updated_at: new Date().toISOString() })
       .where(eq(s.documents.id, id))
       .run();
   }

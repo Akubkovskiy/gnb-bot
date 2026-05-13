@@ -285,6 +285,15 @@ function runMigrations(db: Database.Database): void {
     try { db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`); } catch { /* already exists */ }
   };
   addColumnIfMissing("organizations", "sro_date", "TEXT");
+  addColumnIfMissing("documents", "gdrive_file_id", "TEXT");
+  addColumnIfMissing("documents", "gdrive_synced_at", "TEXT");
+
+  // Unique index for document deduplication
+  try {
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_unique_file
+      ON documents(doc_type, original_filename, doc_number)
+      WHERE doc_number IS NOT NULL`);
+  } catch { /* already exists or partial index unsupported — ignore */ }
 
   // Create indexes (IF NOT EXISTS)
   db.exec(`

@@ -202,6 +202,8 @@ export const documents = sqliteTable("documents", {
   supersedes_document_id: text("supersedes_document_id"),
   reused_from_transition_id: text("reused_from_transition_id"),
   notes: text("notes"),
+  gdrive_file_id: text("gdrive_file_id"),
+  gdrive_synced_at: text("gdrive_synced_at"),
   created_at: text("created_at").notNull().default(now),
   updated_at: text("updated_at").notNull().default(now),
 }, (t) => [

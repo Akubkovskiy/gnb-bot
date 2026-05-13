@@ -62,6 +62,11 @@ import {
   type PlacementRecord,
 } from "../storage/placement.js";
 import { buildStorageFileName, extractExtension } from "../storage/document-naming.js";
+import { isMksActFile, parseMksAct } from "../intake/mks-act-parser.js";
+import { actualizeMksAct, applyActualizationUpdates } from "../services/mks-actualizer.js";
+import type { ActualizationFinding } from "../services/mks-actualizer.js";
+import { buildKbContext, clearConversationContext, findDocumentsForEntity } from "../services/kb-query.js";
+import { storeDocumentSync } from "../storage/document-store.js";
 
 function loadClaudeSystemPrompt(): string {
   const runtimePrompt = path.join(process.cwd(), "docs", "RUNTIME-PROMPT.md");
@@ -77,6 +82,10 @@ function loadClaudeSystemPrompt(): string {
 const CLAUDE_SYSTEM = loadClaudeSystemPrompt();
 
 // ---------------------------------------------------------------------------
+// MKS actualization session — pending save after act analysis
+// ---------------------------------------------------------------------------
+const mksActSessions = new Map<number, { findings: ActualizationFinding[]; filePath: string }>();
+
 // Protocol session state — chats awaiting coordinate catalog or PDF
 // ---------------------------------------------------------------------------
 const protocolSessions = new Map<number, { transition_number: string; date: Date }>();
@@ -432,6 +441,7 @@ async function runStandaloneIngest(
 /**
  * Place an ingested document into storage if object/transition context is known.
  * Returns a human-readable placement message, or empty string if no placement.
+ * Uses storeDocumentSync() — operating principle #2.
  */
 function placeIngestedDocument(
   db: ReturnType<typeof getDb>,
@@ -451,62 +461,38 @@ function placeIngestedDocument(
     const objectName = objectProfile.object.short_name;
     if (!customerName || !objectName) return "";
 
-    // Determine doc type for routing
     const docType = mapIngestKindToDocType(ingestResult.docKind, ingestResult.extractedData);
-
-    // If transition is known, place into transition folder
     let gnbShort = "";
     if (links.transitionId) {
       const repos = createRepos(db);
       const transition = repos.transitions.getById(links.transitionId);
-      if (transition?.gnb_number_short) {
-        gnbShort = transition.gnb_number_short;
-      }
+      if (transition?.gnb_number_short) gnbShort = transition.gnb_number_short;
     }
 
-    if (gnbShort) {
-      const plan = buildTransitionStoragePlan(customerName, objectName, gnbShort);
-      ensureStorageDirs(plan);
+    // Use storeDocumentSync() — atomic placement + DB update
+    const result = storeDocumentSync(db, {
+      tempFilePath: filePath,
+      originalFilename: fileName,
+      docType,
+      documentId, // UPDATE existing row
+      linkType: links.transitionId ? "transition" : "object",
+      targetId: links.transitionId || links.objectId,
+      relation: docType,
+      customerName,
+      objectName,
+      gnbNumberShort: gnbShort,
+      docNumber: ingestResult.extractedData.docNumber as string,
+      docDate: ingestResult.extractedData.docDate as string,
+      mark: ingestResult.extractedData.mark as string,
+    });
 
-      // Build canonical filename
-      const ext = extractExtension(fileName);
-      const canonicalName = buildStorageFileName(docType, {
-        docNumber: ingestResult.extractedData.docNumber as string,
-        docDate: ingestResult.extractedData.docDate as string,
-        mark: ingestResult.extractedData.mark as string,
-        gnbNumberShort: gnbShort,
-        originalExt: ext,
-      });
-
-      const record = placeDocument(plan, docType, filePath, canonicalName);
-      if (record.success) {
-        // Update DB with final storage path
-        const repos = createRepos(db);
-        repos.documents.updateFilePath(documentId, record.targetFile);
-
-        const dirName = path.basename(record.targetDir);
-        return `\uD83D\uDCC1 ${path.basename(record.targetFile)} \u2192 ${dirName}/`;
-      }
-    } else {
-      // Object known but no transition — place into object-level Прочее
-      const projectDir = getProjectDir(customerName, objectName);
-      const miscDir = path.join(projectDir, "\u041F\u0440\u043E\u0447\u0435\u0435");
-      fs.mkdirSync(miscDir, { recursive: true });
-
-      const targetPath = path.join(miscDir, fileName);
-      fs.copyFileSync(filePath, targetPath);
-
-      const repos = createRepos(db);
-      repos.documents.updateFilePath(documentId, targetPath);
-
-      return `\uD83D\uDCC1 ${fileName} \u2192 ${objectName}/\u041F\u0440\u043E\u0447\u0435\u0435/`;
-    }
+    const dirName = path.basename(path.dirname(result.storedPath));
+    return `📁 ${path.basename(result.storedPath)} → ${dirName}/`;
   } catch (err) {
     logger.error({ err, fileName }, "Failed to place ingested document");
+    return "";
   }
-  return "";
 }
-
 function mapIngestKindToDocType(kind: IngestDocKind, data: Record<string, unknown>): string {
   switch (kind) {
     case "person_document": return (data.docType as string) ?? "order";
@@ -563,6 +549,7 @@ export function registerHandlers(bot: Bot): void {
 
   bot.command("new_gnb", async (ctx) => {
     try {
+      clearConversationContext(ctx.chat.id);
       const result = startIntake(ctx.chat.id, stores);
       await sendIntakeResponse(ctx, result);
     } catch (err) {
@@ -621,41 +608,55 @@ export function registerHandlers(bot: Bot): void {
         transition_number: "№1",
         rer_department: "7 РЭР УКС ЮВО МКС филиал ПАО «РОССЕТИ МОСКОВСКИЙ РЕГИОН»",
         dates: {
-          survey:    new Date(2025, 9, 27),
-          pits:      new Date(2025, 9, 27),
-          pilot:     new Date(2025, 9, 28),
-          expansion: new Date(2025, 9, 28),
-          pullback:  new Date(2025, 9, 30),
-          final:     new Date(2025, 9, 31),
+          start: new Date(2025, 9, 27),
+          end:   new Date(2025, 9, 31),
         },
-        contractor_org_line: "ООО «СМК» ОГРН 1167154074570, ИНН 7130031154, 153510, Ивановская область, г. Кинешма, ул. Юрьевецкая, д. 90",
-        designer_org_line:   "ООО «СМК» ОГРН 1167154074570, ИНН 7130031154, 153510, Ивановская область, г. Кинешма, ул. Юрьевецкая, д. 90",
-        executor_org_name:   "ООО «СКМ-ГРУПП»",
-        executor_org_line:   "ОГРН 5167746459579, ИНН 9723046395, 125481, г. Москва, ул. Пулковская, д. 13Б",
+        contractor_org_name:    "ООО «СМК» ",
+        contractor_org_details: "ОГРН 1167154074570, ИНН 7130031154, 153510, Ивановская область, г. Кинешма, ул. Юрьевецкая, д. 90",
+        designer_org_name:      "ООО «СМК» ",
+        designer_org_details:   "ОГРН 1167154074570, ИНН 7130031154, 153510, Ивановская область, г. Кинешма, ул. Юрьевецкая, д. 90",
+        executor_org_name:      "ООО «СКМ-ГРУПП»",
+        executor_org_details:   "ОГРН 5167746459579, ИНН 9723046395, 125481, г. Москва, ул. Пулковская, д. 13Б",
         contractor_short:    "ООО «СКМ-ГРУПП»",
         designer_short:      "ООО «СМК»",
         mks_rep: {
-          full_line:  "Заместитель начальника УКС ЮВО МКС филиал ПАО «РОССЕТИ МОСКОВСКИЙ РЕГИОН» Гусев П.А., ИНРС №С-77-204102 от 18.10.2019; распоряжение №1253р от 06.06.2023",
+          position: "Заместитель начальника УКС ЮВО МКС филиал ПАО «РОССЕТИ МОСКОВСКИЙ РЕГИОН»",
+          name: "Гусев П.А.",
+          inrs: "ИНРС в области строительства №С-77-204102 от 18.10.2019",
+          order: "распоряжение №1253р от 06.06.2023",
           short_name: "Гусев П.А.",
         },
         contractor1: {
-          full_line:  "Зам. начальника ПТО ООО \"СМК\" Тишков В.А., С-77-233823 от 25.03.2021; приказ №18-ЛНА 1 от 03.11.2020г.",
+          position: "Зам. начальника ПТО ООО \"СМК\"",
+          name: "Тишков В.А.",
+          inrs: "С-77-233823 от 25.03.2021",
+          order: "приказ №18-ЛНА 1 от 03.11.2020г.",
           short_name: "Тишков В.А.",
         },
         contractor2: {
-          full_line:  "Заместитель генерального директора по развитию ООО \"СМК\" Прошин Н.Н., ИНРС С-71-081355 от 21.08.2017; приказ №27-ЛНА от 03.02.2022",
+          position: "Заместитель генерального директора по развитию ООО \"СМК\"",
+          name: "Прошин Н.Н.",
+          inrs: "ИНРС С-71-081355 от 21.08.2017",
+          order: "приказ №27-ЛНА от 03.02.2022",
           short_name: "Прошин Н.Н.",
         },
         designer_rep: {
-          full_line:  "ГИП ООО \"СМК\" Сергеев А.А., НРС-Р-С-77-25073, приказ №27-ЛНА от 03.02.2022г.",
+          position: "ГИП ООО \"СМК\"",
+          name: "Сергеев А.А.",
+          inrs: "НРС-Р-С-77-25073",
+          order: "приказ №27-ЛНА от 03.02.2022г.",
           short_name: "Сергеев А.А.",
         },
         executor_rep: {
-          full_line:  "Главный инженер ООО «СКМ-ГРУПП» Картавченко А.Л., приказ №25-11-03-1 от 03.11.2023",
+          position: "Главный инженер ООО «СКМ-ГРУПП»",
+          name: "Картавченко А.Л.",
+          order: "приказ №25-11-03-1 от 03.11.2023",
           short_name: "Картавченко А.Л.",
         },
         rer_rep: {
-          full_line:  "Старший мастер 7 РЭР УКС ЮВО МКС филиал ПАО «РОССЕТИ МОСКОВСКИЙ РЕГИОН» Рящиков М.Ю., распоряжение №1399р от 01.07.2025г.",
+          position: "Старший мастер 7 РЭР УКС ЮВО МКС филиал ПАО «РОССЕТИ МОСКОВСКИЙ РЕГИОН»",
+          name: "Рящиков М.Ю.",
+          order: "распоряжение №1399р от 01.07.2025г.",
           short_name: "Рящиков М.Ю.",
         },
         length_m:           63.64,
@@ -672,7 +673,7 @@ export function registerHandlers(bot: Bot): void {
       };
       const outDir = getTempDir();
       const result = await renderMksActs(input, outDir);
-      await ctx.api.editMessageText(ctx.chat.id, status.message_id, `📄 Готово: ${path.basename(result.filePath)} (${result.sheetsWritten} листов)`);
+      await ctx.api.editMessageText(ctx.chat.id, status.message_id, `📄 Готово: ${path.basename(result.filePath)} (${result.cellsWritten} ячеек)`);
       await ctx.replyWithDocument(new InputFile(result.filePath), { caption: path.basename(result.filePath) });
       try { fs.unlinkSync(result.filePath); } catch { /* ignore */ }
     } catch (err) {
@@ -714,6 +715,45 @@ export function registerHandlers(bot: Bot): void {
     const data = ctx.callbackQuery.data;
     const chatId = ctx.chat?.id;
     if (!chatId) return;
+
+    // Handle MKS actualization save/skip
+    if (data.startsWith("mks_act:")) {
+      await ctx.answerCallbackQuery();
+      const session = mksActSessions.get(chatId);
+      if (!session) {
+        await ctx.reply("Сессия устарела — повторно отправьте файл.");
+        return;
+      }
+      mksActSessions.delete(chatId);
+
+      if (data === "mks_act:save") {
+        const memDir = getMemoryDir();
+        const db = getDb(memDir);
+        const applied = await applyActualizationUpdates(db, session.findings);
+        if (applied.length > 0) {
+          await ctx.reply(`✅ Применено:\n${applied.map((a) => `• ${a}`).join("\n")}`);
+        } else {
+          await ctx.reply("✅ Нечего применять — все данные актуальны.");
+        }
+        // Store the act file before cleanup
+        if (session.filePath && fs.existsSync(session.filePath)) {
+          try {
+            storeDocumentSync(db, {
+              tempFilePath: session.filePath,
+              originalFilename: path.basename(session.filePath),
+              docType: 'act',
+              notes: 'МКС АОСР+РЭР акт',
+            });
+          } catch (e) {
+            logger.warn({ e }, "Failed to store MKS act file");
+          }
+        }
+      } else {
+        await ctx.reply("Изменения не сохранены.");
+      }
+      try { fs.unlinkSync(session.filePath); } catch { /* ignore */ }
+      return;
+    }
 
     // Handle ingest callbacks
     if (data.startsWith("ingest:")) {
@@ -884,6 +924,50 @@ export function registerHandlers(bot: Bot): void {
         await ctx.api.editMessageText(chatId, status.message_id, `❌ Ошибка: ${err instanceof Error ? err.message : "неизвестная ошибка"}`);
         return;
       }
+    }
+
+    // MKS act actualization: detect МКС АОСР+РЭР template, compare with DB
+    if ([".xls", ".xlsx"].includes(ext)) {
+      const localPath = await downloadTelegramFile(bot, doc.file_id, fileName);
+      if (isMksActFile(localPath)) {
+        const status = await ctx.reply(`🔍 Анализирую МКС акт: ${fileName}...`);
+        try {
+          const act = parseMksAct(localPath);
+          const memDir = getMemoryDir();
+          const db = getDb(memDir);
+          const result = await actualizeMksAct(db, act);
+
+          // Store session for potential save
+          const hasProposals = result.findings.some((f) => f.proposed);
+          if (hasProposals) {
+            mksActSessions.set(chatId, { findings: result.findings, filePath: localPath });
+          } else {
+            try { fs.unlinkSync(localPath); } catch { /* ignore */ }
+          }
+
+          // Build reply with inline button if there's something to save
+          const parts = splitMessage(result.summary);
+          await ctx.api.editMessageText(chatId, status.message_id, parts[0]);
+          for (let i = 1; i < parts.length; i++) await ctx.reply(parts[i]);
+
+          if (hasProposals) {
+            const kb = new InlineKeyboard()
+              .text("💾 Сохранить в базу", "mks_act:save")
+              .text("❌ Пропустить", "mks_act:skip");
+            await ctx.reply("Применить обнаруженные изменения к базе?", { reply_markup: kb });
+          }
+        } catch (err) {
+          logger.error({ err, fileName }, "Ошибка анализа МКС акта");
+          try { fs.unlinkSync(localPath); } catch { /* ignore */ }
+          await ctx.api.editMessageText(
+            chatId, status.message_id,
+            `❌ Ошибка анализа ${fileName}: ${err instanceof Error ? err.message : "неизвестная ошибка"}`,
+          );
+        }
+        return;
+      }
+      // Not an MKS act — delete and fall through to knowledge ingest with re-download
+      try { fs.unlinkSync(localPath); } catch { /* ignore */ }
     }
 
     // Knowledge ingest: no active draft, document could be useful for DB.
@@ -1080,10 +1164,60 @@ export function registerHandlers(bot: Bot): void {
       return;
     }
 
-    // No active intake — fall through to Claude
+    // Detect "скинь" retrieval request
+    const lowerText = text.toLowerCase();
+    const isRetrievalRequest = /скинь|отправь|пришли|покажи файл|файл по|файлы по/.test(lowerText);
+    if (isRetrievalRequest) {
+      try {
+        const memDir = getMemoryDir();
+        const db = getDb(memDir);
+        const kbCtx = await buildKbContext(db, text, chatId);
+        if (kbCtx.activeTransitionId || kbCtx.found) {
+          const transId = kbCtx.activeTransitionId;
+          if (transId) {
+            const docs = await findDocumentsForEntity(db, 'transition', transId);
+            if (docs.length > 0) {
+              for (const doc of docs) {
+                if (doc.file_path && fs.existsSync(doc.file_path)) {
+                  await ctx.replyWithDocument(new InputFile(doc.file_path), {
+                    caption: doc.original_filename || doc.doc_type,
+                  });
+                } else {
+                  await ctx.reply(`📎 ${doc.original_filename || doc.doc_type} — файл не найден на диске`);
+                }
+              }
+              return;
+            }
+          }
+          await ctx.reply("Файлов нет. Загрузи файл и я его сохраню.");
+          return;
+        }
+      } catch (retrievalErr) {
+        logger.warn({ err: retrievalErr }, "Retrieval request failed, falling through to Claude");
+      }
+    }
+
+    // No active intake — check knowledge base, then fall through to Claude
     const status = await ctx.reply("⏳ Думаю...");
     try {
-      const response = await askClaude(text, { systemPrompt: getSystemPromptWithMemory() });
+      // Build DB context for this message
+      let systemPrompt = getSystemPromptWithMemory();
+      try {
+        const memDir = getMemoryDir();
+        const db = getDb(memDir);
+        const kbCtx = await buildKbContext(db, text, chatId);
+        if (kbCtx.found) {
+          systemPrompt +=
+            "\n\n---\n" +
+            "Ниже — актуальные данные из базы данных проекта. " +
+            "Используй их для ответа на вопрос пользователя:\n\n" +
+            kbCtx.contextText;
+        }
+      } catch (kbErr) {
+        logger.warn({ err: kbErr }, "KB lookup failed, proceeding without DB context");
+      }
+
+      const response = await askClaude(text, { systemPrompt });
       const clean = stripMarkdown(response);
       const parts = splitMessage(clean);
       await ctx.api.editMessageText(chatId, status.message_id, parts[0]);
