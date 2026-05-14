@@ -92,12 +92,12 @@ export function buildStoragePlan(
 
   return {
     transitionDir,
-    execDocsDir: path.join(transitionDir, "Исполнительная документация"),
-    pipePassportsDir: path.join(transitionDir, "Паспорта на трубу"),
-    certificatesDir: path.join(transitionDir, "Сертификаты"),
-    ordersDir: path.join(transitionDir, "Приказы и распоряжения"),
-    schemesDir: path.join(transitionDir, "Исполнительные схемы"),
-    miscDir: path.join(transitionDir, "Прочее"),
+    execDocsDir:      path.join(transitionDir, "01. Исполнительная документация"),
+    pipePassportsDir: path.join(transitionDir, "02. Паспорта на трубу"),
+    certificatesDir:  path.join(transitionDir, "03. Сертификаты"),
+    ordersDir:        path.join(transitionDir, "04. Приказы и распоряжения"),
+    schemesDir:       path.join(transitionDir, "05. Исполнительные схемы"),
+    miscDir:          path.join(transitionDir, "06. Прочее"),
   };
 }
 
