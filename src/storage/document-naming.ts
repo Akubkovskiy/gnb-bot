@@ -1,13 +1,27 @@
 /**
  * Storage document naming — canonical file names for placed documents.
  *
- * From CLAUDE.md naming table:
- * - Паспорт качества: `Паспорт качества №[N] [марка].pdf`
- * - Сертификат: `Сертификат соответствия [номер].pdf`
- * - Распоряжение: `Распоряжение ТН №[N] от [дата].pdf`
- * - ИС: `ИС ГНБ [номер].pdf`
- * - Акты: `[N] Акты ЗП ГНБ [номер].xlsx`
- * - АОСР: `[N] АОСР ОЭК-ГНБ [номер].xlsx`
+ * Naming convention (mirrors act naming style — easily findable):
+ *
+ * Паспорта (02. Паспорта/):
+ *   Паспорт трубы №[N] [марка][.ext]          — pipe passport
+ *   Паспорт бентонита №[N] [марка][.ext]      — bentonite passport
+ *   Паспорт [материал] №[N][.ext]             — any other material
+ *
+ * Сертификаты (03. Сертификаты/):
+ *   Сертификат [номер][.ext]
+ *
+ * Приказы (04. Приказы/):
+ *   Приказ №[N] [Фамилия] [дата][.ext]
+ *   Распоряжение №[N] от [дата][.ext]
+ *
+ * Исполнительные схемы (05. Исполнительные схемы/):
+ *   ИС ГНБ [номер][.ext]
+ *
+ * Исполнительная документация (01. Исполнительная документация/):
+ *   АОСР ОЭК-ГНБ [номер][.ext]
+ *   ПБ ГНБ [номер][.ext]        — протокол бурения
+ *   АКТ [описание][.ext]
  */
 
 import path from "node:path";
@@ -19,6 +33,10 @@ export interface StorageNamingMetadata {
   docDate?: string;
   /** Material mark / brand (e.g. "ЭЛЕКТРОПАЙП 225"). */
   mark?: string;
+  /** Material type for passport ("трубы" | "бентонита" | "раствора" | ...) */
+  materialType?: string;
+  /** Person surname for orders. */
+  surname?: string;
   /** GNB number short (e.g. "5-5"). */
   gnbNumberShort?: string;
   /** Sequential number of transition on this object. */
@@ -38,34 +56,59 @@ export function buildStorageFileName(
   const ext = metadata.originalExt || ".pdf";
 
   switch (docType) {
+    // ── Паспорта (02. Паспорта/) ──────────────────────────────────────────────
     case "passport_pipe":
     case "pipe_passport": {
+      const matType = metadata.materialType || "трубы";
+      const num = metadata.docNumber ? ` №${metadata.docNumber}` : "";
+      const mark = metadata.mark ? ` ${metadata.mark}` : "";
+      return `Паспорт ${matType}${num}${mark}${ext}`;
+    }
+
+    case "passport_bentonite":
+    case "bentonite_passport": {
+      const num = metadata.docNumber ? ` №${metadata.docNumber}` : "";
+      const mark = metadata.mark ? ` ${metadata.mark}` : "";
+      return `Паспорт бентонита${num}${mark}${ext}`;
+    }
+
+    // ── Сертификаты (03. Сертификаты/) ───────────────────────────────────────
+    case "certificate":
+    case "pipe_certificate": {
+      const num = metadata.docNumber ? ` ${metadata.docNumber}` : "";
+      return `Сертификат${num}${ext}`;
+    }
+
+    // ── Приказы (04. Приказы/) ────────────────────────────────────────────────
+    case "order":
+    case "order_sign1":
+    case "order_sign2":
+    case "order_sign3":
+    case "order_tech": {
       const num = metadata.docNumber ? `№${metadata.docNumber}` : "";
-      const mark = metadata.mark || "";
-      const parts = ["Паспорт качества", num, mark].filter(Boolean);
+      const surname = metadata.surname || "";
+      const date = metadata.docDate ? `от ${metadata.docDate}` : "";
+      const parts = ["Приказ", num, surname, date].filter(Boolean);
       return `${parts.join(" ")}${ext}`;
     }
 
-    case "certificate":
-    case "pipe_certificate": {
-      const num = metadata.docNumber || "";
-      return num
-        ? `Сертификат соответствия ${num}${ext}`
-        : `Сертификат соответствия${ext}`;
-    }
-
-    case "order":
-    case "order_tech":
     case "appointment_letter": {
       const num = metadata.docNumber ? `№${metadata.docNumber}` : "";
       const date = metadata.docDate ? `от ${metadata.docDate}` : "";
-      const parts = ["Распоряжение ТН", num, date].filter(Boolean);
+      const parts = ["Распоряжение", num, date].filter(Boolean);
       return `${parts.join(" ")}${ext}`;
     }
 
+    // ── Исполнительные схемы (05. Исполнительные схемы/) ─────────────────────
     case "executive_scheme": {
       const gnb = metadata.gnbNumberShort || "";
       return gnb ? `ИС ГНБ ${gnb}${ext}` : `ИС ГНБ${ext}`;
+    }
+
+    // ── Исполнительная документация (01. Исполнительная документация/) ────────
+    case "drilling_protocol": {
+      const gnb = metadata.gnbNumberShort || "";
+      return gnb ? `ПБ ГНБ ${gnb}${ext}` : `Протокол бурения${ext}`;
     }
 
     case "generated_internal_acts":
@@ -89,8 +132,8 @@ export function buildStorageFileName(
     }
 
     default: {
-      // For unknown types, keep original name or generate generic
-      return `Документ${ext}`;
+      // Keep original name — better than "Документ.pdf"
+      return metadata.originalExt ? `Документ${ext}` : `Документ${ext}`;
     }
   }
 }
